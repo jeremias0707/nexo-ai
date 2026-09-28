@@ -1,28 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { MESSAGE_MAX_CHARS, trimHistory, type Turn } from "@/lib/history";
+import { parseChatBody } from "@/lib/chat-payload";
 import { tooManyRequests } from "@/lib/rate-limit.server";
 import { systemPrompt } from "@/lib/tutor.server";
-
-// Cheap guard against absurd payloads; everything past it is trimmed, not rejected.
-const MAX_INCOMING_MESSAGES = 200;
-
-function parseBody(body: unknown): { messages: Turn[] } | null {
-  if (!body || typeof body !== "object") return null;
-  const record = body as Record<string, unknown>;
-  if (!Array.isArray(record.messages) || record.messages.length === 0) return null;
-  const messages: Turn[] = [];
-  for (const item of record.messages.slice(-MAX_INCOMING_MESSAGES)) {
-    if (!item || typeof item !== "object") return null;
-    const turn = item as Record<string, unknown>;
-    if (turn.role !== "user" && turn.role !== "assistant") return null;
-    if (typeof turn.content !== "string") return null;
-    const content = turn.content.trim().slice(0, MESSAGE_MAX_CHARS);
-    if (!content) continue;
-    messages.push({ role: turn.role, content });
-  }
-  if (messages[messages.length - 1]?.role !== "user") return null;
-  return { messages: trimHistory(messages).messages };
-}
 
 function clientIp(request: Request) {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -41,9 +20,9 @@ export const Route = createFileRoute("/api/chat")({
           return Response.json({ error: "No pude leer la pregunta." }, { status: 400 });
         }
 
-        const parsed = parseBody(payload);
-        if (!parsed) {
-          return Response.json({ error: "La pregunta no tiene un formato válido." }, { status: 400 });
+        const parsed = parseChatBody(payload);
+        if (!parsed.ok) {
+          return Response.json({ error: parsed.error }, { status: 400 });
         }
 
         if (await tooManyRequests(clientIp(request))) {
@@ -74,12 +53,14 @@ export const Route = createFileRoute("/api/chat")({
             body: JSON.stringify({
               model: "grok-4.5",
               stream: true,
+              // xAI advises not storing server-side history when sending images.
+              store: false,
               max_output_tokens: 1000,
               temperature: 0.4,
               tools: [{ type: "web_search" }],
               input: [
                 { role: "system", content: systemPrompt() },
-                ...parsed.messages,
+                ...parsed.input,
               ],
             }),
           });
@@ -91,14 +72,18 @@ export const Route = createFileRoute("/api/chat")({
         }
 
         if (!upstream.ok || !upstream.body) {
+          const imageRejected =
+            parsed.hasImage && [400, 413, 415, 422].includes(upstream.status);
           return Response.json(
             {
               error:
                 upstream.status === 429
                   ? "El modelo está ocupado. Espera un momento."
-                  : "No pude completar la explicación.",
+                  : imageRejected
+                    ? "No pude leer la imagen. Probá con otra foto (JPG o PNG, bien iluminada) o escribí el ejercicio."
+                    : "No pude completar la explicación.",
             },
-            { status: upstream.status === 429 ? 429 : 502 },
+            { status: upstream.status === 429 ? 429 : imageRejected ? 422 : 502 },
           );
         }
 

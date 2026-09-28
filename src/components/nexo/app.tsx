@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, Check, Copy, Menu, Plus, Square, X } from "lucide-react";
+import { ArrowUp, Camera, Check, Copy, ImageOff, Menu, Plus, Square, X } from "lucide-react";
 import { Lesson } from "@/components/nexo/lesson";
 import { Mark } from "@/components/nexo/mark";
 import { useChatStore, type ChatMessage } from "@/lib/chat-store";
 import { trimHistory } from "@/lib/history";
+import { prepareImage, type PreparedImage } from "@/lib/image-client";
 import { STARTERS } from "@/lib/tutor";
 
 type LinkState = "checking" | "online" | "offline";
@@ -21,6 +22,9 @@ export function NexoApp() {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [attachment, setAttachment] = useState<PreparedImage | null>(null);
+  const [preparing, setPreparing] = useState(false);
 
   useEffect(() => {
     void useChatStore.persist.rehydrate();
@@ -30,7 +34,7 @@ export function NexoApp() {
   const chatting = Boolean(active && active.messages.length > 0);
   // Older turns beyond the budget are not sent to the tutor; say so, quietly.
   const trimmed = active
-    ? trimHistory(active.messages.filter((message) => message.content.trim())).dropped > 0
+    ? trimHistory(active.messages.filter(hasPayload)).dropped > 0
     : false;
 
   useEffect(() => {
@@ -46,25 +50,52 @@ export function NexoApp() {
     stickRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
   }
 
-  async function send(text: string) {
+  async function pickImage(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    setPreparing(true);
+    try {
+      setAttachment(await prepareImage(file));
+      fieldRef.current?.focus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No pude abrir esa imagen.");
+    } finally {
+      setPreparing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function send(text: string, photo: PreparedImage | null = null) {
     const content = text.trim();
-    if (!content || busy) return;
+    if ((!content && !photo) || busy || preparing) return;
     setError(null);
     setDraft("");
+    setAttachment(null);
     if (fieldRef.current) fieldRef.current.style.height = "auto";
     stickRef.current = true;
 
     const store = useChatStore.getState();
-    const threadId = store.ensureThread(content);
-    const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", content };
+    const threadId = store.ensureThread(content || "Foto de ejercicio");
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content,
+      ...(photo ? { image: photo.thumb } : {}),
+    };
     const assistantId = crypto.randomUUID();
     store.appendMessage(threadId, userMessage);
     store.appendMessage(threadId, { id: assistantId, role: "assistant", content: "" });
 
     const history = trimHistory(
       (useChatStore.getState().threads.find((thread) => thread.id === threadId)?.messages ?? [])
-        .filter((message) => message.id !== assistantId && message.content.trim())
-        .map((message) => ({ role: message.role, content: message.content })),
+        .filter((message) => message.id !== assistantId && hasPayload(message))
+        .map((message) =>
+          message.id === userMessage.id && photo
+            ? { role: message.role, content: message.content, image: photo.full }
+            : message.role === "user" && (message.image || message.hadImage)
+              ? { role: message.role, content: message.content, hadImage: true }
+              : { role: message.role, content: message.content },
+        ),
     ).messages;
 
     const controller = new AbortController();
@@ -128,7 +159,15 @@ export function NexoApp() {
         const message = err instanceof Error ? err.message : "No pude completar la explicación.";
         setError(message);
         if (acc.trim()) useChatStore.getState().patchMessage(threadId, assistantId, acc);
-        else useChatStore.getState().dropMessage(threadId, assistantId);
+        else {
+          useChatStore.getState().dropMessage(threadId, assistantId);
+          if (photo) {
+            // Give the photo back so a retry does not need a new picture.
+            useChatStore.getState().dropMessage(threadId, userMessage.id);
+            setAttachment(photo);
+            setDraft(content);
+          }
+        }
       }
     } finally {
       setBusy(false);
@@ -210,7 +249,7 @@ export function NexoApp() {
           className="shrink-0 px-3 pt-2 pb-3 md:px-5"
           onSubmit={(event) => {
             event.preventDefault();
-            void send(draft);
+            void send(draft, attachment);
           }}
         >
           <div className="mx-auto max-w-2xl">
@@ -225,8 +264,52 @@ export function NexoApp() {
                 Los mensajes más antiguos de esta conversación ya no se envían al tutor.
               </p>
             ) : null}
+            {attachment ? (
+              <div className="attach-preview mb-2 flex items-center gap-3">
+                <span className="relative">
+                  <img
+                    src={attachment.thumb}
+                    alt="Foto adjunta"
+                    className="block size-16 rounded-sm border border-neon/40 object-cover"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Quitar foto"
+                    onClick={() => setAttachment(null)}
+                    className="tap absolute -top-2.5 -right-2.5 grid size-7 place-items-center rounded-full border border-line bg-bg text-fg"
+                  >
+                    <X className="size-3.5" strokeWidth={2} />
+                  </button>
+                </span>
+                <p className="min-w-0 font-mono text-xs leading-relaxed tracking-wider text-muted uppercase">
+                  <span className="text-neon">Foto lista</span>
+                  <span className="block normal-case tracking-normal text-faint">
+                    Se envía con tu mensaje. Podés sumar qué necesitás.
+                  </span>
+                </p>
+              </div>
+            ) : null}
             <div className="hud-frame">
               <div className="dock flex items-end gap-2 rounded-sm p-2">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => void pickImage(event.target.files?.[0])}
+                />
+                <button
+                  type="button"
+                  aria-label="Adjuntar foto del ejercicio"
+                  title="Adjuntar foto del ejercicio"
+                  disabled={busy || preparing}
+                  onClick={() => fileRef.current?.click()}
+                  className={`tap hud-btn grid size-11 shrink-0 place-items-center rounded-sm border border-line text-muted disabled:text-faint ${
+                    attachment ? "border-neon/60 text-neon" : ""
+                  } ${preparing ? "animate-pulse" : ""}`}
+                >
+                  <Camera className="size-5" strokeWidth={1.5} />
+                </button>
                 <label className="sr-only" htmlFor="pregunta">
                   Pregunta
                 </label>
@@ -235,7 +318,7 @@ export function NexoApp() {
                   ref={fieldRef}
                   rows={1}
                   value={draft}
-                  placeholder="Pregunta algo concreto"
+                  placeholder={attachment ? "¿Qué necesitás de la foto? (opcional)" : "Pregunta algo concreto"}
                   className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-base text-fg caret-neon outline-none placeholder:text-faint"
                   onChange={(event) => {
                     setDraft(event.target.value);
@@ -246,14 +329,14 @@ export function NexoApp() {
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
-                      void send(draft);
+                      void send(draft, attachment);
                     }
                   }}
                 />
                 <button
                   type={busy ? "button" : "submit"}
                   aria-label={busy ? "Detener" : "Enviar"}
-                  disabled={!busy && !draft.trim()}
+                  disabled={!busy && ((!draft.trim() && !attachment) || preparing)}
                   onClick={busy ? stop : undefined}
                   className="tap send-btn grid size-11 shrink-0 place-items-center rounded-sm bg-neon text-ink disabled:bg-bg-soft disabled:text-faint"
                 >
@@ -495,6 +578,10 @@ function Empty({ onPick }: { onPick: (prompt: string) => void }) {
   );
 }
 
+function hasPayload(message: ChatMessage) {
+  return Boolean(message.content.trim() || message.image || message.hadImage);
+}
+
 function stripCites(text: string) {
   return text.replace(/\[\[\d+\]\]\((https?:\/\/[^)\s]+)\)/g, "");
 }
@@ -521,9 +608,21 @@ function Message({
   if (message.role === "user") {
     return (
       <div className="msg-in flex justify-end">
-        <p className="max-w-[85%] rounded-md rounded-br-sm border border-neon/25 bg-neon/10 px-4 py-3 text-base leading-relaxed text-fg">
-          {message.content}
-        </p>
+        <div className="flex max-w-[85%] flex-col items-end gap-2 rounded-md rounded-br-sm border border-neon/25 bg-neon/10 p-2 text-base leading-relaxed text-fg">
+          {message.image ? (
+            <img
+              src={message.image}
+              alt="Foto del ejercicio"
+              className="block max-h-64 w-auto max-w-full rounded-sm border border-line object-contain"
+            />
+          ) : message.hadImage ? (
+            <span className="flex items-center gap-2 px-2 pt-1 font-mono text-xs text-faint">
+              <ImageOff className="size-4" strokeWidth={1.5} />
+              Foto enviada (ya no se guarda)
+            </span>
+          ) : null}
+          {message.content ? <p className="px-2 py-1 whitespace-pre-wrap">{message.content}</p> : null}
+        </div>
       </div>
     );
   }
