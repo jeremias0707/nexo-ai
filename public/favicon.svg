@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="NEXO AI">
+  <rect width="32" height="32" rx="7" fill="#050505"/>
+  <path d="M16 3.05 a12.95 12.95 0 0 1 11.2 6.48" fill="none" stroke="#e85d4c" stroke-width="1.65" stroke-linecap="round"/>
+  <path d="M28.5 18.2 a12.95 12.95 0 0 1 -9.45 10.1" fill="none" stroke="#3ecf8e" stroke-width="1.65" stroke-linecap="round"/>
+  <path d="M12.0 28.45 a12.95 12.95 0 0 1 -9.2 -11.4" fill="none" stroke="#5b8def" stroke-width="1.65" stroke-linecap="round"/>
+  <path fill="#f4f4f2" d="M9.35 23.55 V8.7 h3.05 l7.15 9.85 V8.7 h3.1 v14.85 h-3.05 L12.4 13.7 V23.55 Z"/>
+</svg>
