@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.nexoai.app",
+      "sha256_cert_fingerprints": [
+        "0C:B0:1A:FB:4F:8E:7D:D0:3C:C3:1D:0F:9D:F0:DE:A1:3C:B1:51:75:AC:0D:54:CD:1A:32:6C:1F:CF:B0:6C:4E"
+      ]
+    }
+  }
+]
