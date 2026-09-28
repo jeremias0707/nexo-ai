@@ -252,6 +252,20 @@
   animation: hud-pulse 2.4s ease-in-out infinite;
 }
 
+.mic-live {
+  background: color-mix(in oklab, var(--color-neon) 12%, transparent);
+  animation: mic-ring 1.4s ease-out infinite;
+}
+
+@keyframes mic-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-neon) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
 .hud-dot.off {
   background: var(--color-accent-r);
   box-shadow: none;
@@ -391,6 +405,7 @@
   .rise,
   .msg-in,
   .hud-dot,
+  .mic-live,
   .scan-bar::after {
     animation: none;
   }

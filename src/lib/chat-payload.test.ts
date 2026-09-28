@@ -11,6 +11,7 @@ describe("parseChatBody", () => {
     assert.deepEqual(parsed, {
       ok: true,
       hasImage: false,
+      document: null,
       input: [{ role: "user", content: "hola" }],
     });
   });

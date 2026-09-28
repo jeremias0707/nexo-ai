@@ -1,3 +1,4 @@
+import { checkDocument, DOC_DEFAULT_PROMPT, documentContext, type DocPayload } from "./document.ts";
 import { MESSAGE_MAX_CHARS, trimHistory, type Turn } from "./history.ts";
 import { checkImageDataUrl, IMAGE_DEFAULT_PROMPT, IMAGE_EARLIER_NOTE } from "./image.ts";
 
@@ -10,20 +11,31 @@ export type InputPart =
 export type UpstreamTurn = Turn | { role: "user"; content: InputPart[] };
 
 export type ParsedChat =
-  { ok: true; input: UpstreamTurn[]; hasImage: boolean } | { ok: false; error: string };
+  | { ok: true; input: UpstreamTurn[]; hasImage: boolean; document: DocPayload | null }
+  | { ok: false; error: string };
 
 const INVALID = "La pregunta no tiene un formato válido.";
 
 /**
- * Parses the /api/chat body. Each message is `{ role, content, image?, hadImage? }`.
+ * Parses the /api/chat body:
+ *   { messages: [{ role, content, image?, hadImage?, newDocument? }], document? }
  * Only the latest user message may carry `image` (a data URL); any earlier turn
  * with a photo is forwarded as text plus IMAGE_EARLIER_NOTE, never re-sent.
+ * `document` ({ name, kind, pages, totalPages, truncated, text }) is the
+ * conversation's attached PDF/notes, sent with every request of that
+ * conversation; it goes first, as reference material, outside the history budget.
  */
 export function parseChatBody(body: unknown): ParsedChat {
   if (!body || typeof body !== "object") return { ok: false, error: INVALID };
   const record = body as Record<string, unknown>;
   if (!Array.isArray(record.messages) || record.messages.length === 0) {
     return { ok: false, error: INVALID };
+  }
+  let document: DocPayload | null = null;
+  if (record.document !== undefined && record.document !== null) {
+    const check = checkDocument(record.document);
+    if (!check.ok) return { ok: false, error: check.error };
+    document = check.doc;
   }
   const items = record.messages.slice(-MAX_INCOMING_MESSAGES);
   const last = items.length - 1;
@@ -35,16 +47,20 @@ export function parseChatBody(body: unknown): ParsedChat {
     if (turn.role !== "user" && turn.role !== "assistant") return { ok: false, error: INVALID };
     if (typeof turn.content !== "string") return { ok: false, error: INVALID };
     let content = turn.content.trim().slice(0, MESSAGE_MAX_CHARS);
+    const isLatest = turn.role === "user" && index === last;
+    const fallback =
+      document && turn.newDocument === true ? DOC_DEFAULT_PROMPT : IMAGE_DEFAULT_PROMPT;
     const hasImageField = turn.image !== undefined && turn.image !== null;
-    if (turn.role === "user" && index === last && hasImageField) {
+    if (isLatest && hasImageField) {
       const check = checkImageDataUrl(turn.image);
       if (!check.ok) return { ok: false, error: check.error };
-      messages.push({ role: "user", content: content || IMAGE_DEFAULT_PROMPT, image: check.url });
+      messages.push({ role: "user", content: content || fallback, image: check.url });
       continue;
     }
     if (turn.role === "user" && (hasImageField || turn.hadImage === true)) {
       content = content ? `${content}\n${IMAGE_EARLIER_NOTE}` : IMAGE_EARLIER_NOTE;
     }
+    if (!content && isLatest && document && turn.newDocument === true) content = DOC_DEFAULT_PROMPT;
     if (!content) continue;
     messages.push({ role: turn.role, content });
   }
@@ -65,5 +81,6 @@ export function parseChatBody(body: unknown): ParsedChat {
     }
     return { role: message.role, content: message.content };
   });
-  return { ok: true, input, hasImage };
+  if (document) input.unshift({ role: "user", content: documentContext(document) });
+  return { ok: true, input, hasImage, document };
 }

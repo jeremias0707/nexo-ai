@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
+import type { DocPayload } from "@/lib/document";
 import type { Level, Mode } from "@/lib/tutor";
+
+/** What the chat bubble shows for an attached document. */
+export type DocMeta = Pick<DocPayload, "name" | "kind" | "pages" | "totalPages" | "truncated">;
+
+/** The conversation's document. `text` is dropped from storage for older conversations. */
+export type ThreadDoc = DocMeta & { text?: string; messageId: string };
 
 export type ChatMessage = {
   id: string;
@@ -11,6 +18,8 @@ export type ChatMessage = {
   image?: string;
   /** The message had a photo whose thumbnail was dropped to save space. */
   hadImage?: boolean;
+  /** A PDF / notes file attached with this message (metadata only). */
+  doc?: DocMeta;
 };
 
 export type Thread = {
@@ -20,6 +29,8 @@ export type Thread = {
   level: Level;
   messages: ChatMessage[];
   updatedAt: number;
+  /** Active document of the conversation, sent as context with every question. */
+  doc?: ThreadDoc;
 };
 
 type ChatState = {
@@ -37,10 +48,30 @@ type ChatState = {
   patchMessage: (threadId: string, messageId: string, content: string) => void;
   setSources: (threadId: string, messageId: string, sources: string[]) => void;
   dropMessage: (threadId: string, messageId: string) => void;
+  setDoc: (threadId: string, doc: ThreadDoc | undefined) => void;
 };
 
 /** How many photo thumbnails survive in localStorage (newest first). */
 export const MAX_STORED_THUMBS = 10;
+
+/** Conversations (newest first) that keep their document text in localStorage. */
+export const MAX_STORED_DOCS = 3;
+
+/** Drops the stored text of all but the `limit` most recent conversation documents. */
+export function capDocs(threads: Thread[], limit = MAX_STORED_DOCS): Thread[] {
+  const keep = new Set(
+    [...threads]
+      .filter((thread) => thread.doc?.text)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, limit)
+      .map((thread) => thread.id),
+  );
+  return threads.map((thread) =>
+    thread.doc?.text && !keep.has(thread.id)
+      ? { ...thread, doc: { ...thread.doc, text: undefined } }
+      : thread,
+  );
+}
 
 /** Keeps only the newest `limit` thumbnails; older photo messages keep `hadImage`. */
 export function capThumbnails(threads: Thread[], limit = MAX_STORED_THUMBS): Thread[] {
@@ -88,7 +119,13 @@ const safeStorage: StateStorage = {
       try {
         const parsed = JSON.parse(value) as { state?: { threads?: Thread[] } };
         if (parsed.state?.threads) {
-          parsed.state.threads = capThumbnails(parsed.state.threads, 0);
+          parsed.state.threads = capDocs(capThumbnails(parsed.state.threads, 0), 1);
+          try {
+            localStorage.setItem(name, JSON.stringify(parsed));
+            return;
+          } catch {
+            parsed.state.threads = capDocs(parsed.state.threads, 0);
+          }
           localStorage.setItem(name, JSON.stringify(parsed));
         }
       } catch {
@@ -196,6 +233,12 @@ export const useChatStore = create<ChatState>()(
               : thread,
           ),
         })),
+      setDoc: (threadId, doc) =>
+        set((state) => ({
+          threads: state.threads.map((thread) =>
+            thread.id === threadId ? { ...thread, doc, updatedAt: Date.now() } : thread,
+          ),
+        })),
       dropMessage: (threadId, messageId) =>
         set((state) => ({
           threads: state.threads.map((thread) =>
@@ -213,7 +256,7 @@ export const useChatStore = create<ChatState>()(
       skipHydration: true,
       storage: createJSONStorage(() => safeStorage),
       partialize: (state) => ({
-        threads: capThumbnails(state.threads),
+        threads: capDocs(capThumbnails(state.threads)),
         activeId: state.activeId,
         mode: state.mode,
         level: state.level,

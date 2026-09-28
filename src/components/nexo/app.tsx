@@ -1,10 +1,34 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, Camera, Check, Copy, ImageOff, Menu, Plus, Square, X } from "lucide-react";
+import {
+  ArrowUp,
+  Camera,
+  Check,
+  Copy,
+  FileText,
+  ImageOff,
+  Menu,
+  Mic,
+  Paperclip,
+  Plus,
+  Square,
+  Volume2,
+  X,
+} from "lucide-react";
 import { Lesson } from "@/components/nexo/lesson";
 import { Mark } from "@/components/nexo/mark";
-import { useChatStore, type ChatMessage } from "@/lib/chat-store";
+import { useChatStore, type ChatMessage, type DocMeta } from "@/lib/chat-store";
+import { describeDoc, type DocPayload } from "@/lib/document";
+import { DOC_ACCEPT, readDocument } from "@/lib/document-client";
 import { trimHistory } from "@/lib/history";
 import { prepareImage, type PreparedImage } from "@/lib/image-client";
+import {
+  appendDictation,
+  canSpeak,
+  dictationError,
+  recognitionCtor,
+  speak,
+  type Recognition,
+} from "@/lib/speech-client";
 import { STARTERS } from "@/lib/tutor";
 
 type LinkState = "checking" | "online" | "offline";
@@ -25,6 +49,33 @@ export function NexoApp() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [attachment, setAttachment] = useState<PreparedImage | null>(null);
   const [preparing, setPreparing] = useState(false);
+  const docRef = useRef<HTMLInputElement>(null);
+  const [pendingDoc, setPendingDoc] = useState<DocPayload | null>(null);
+  const [readingDoc, setReadingDoc] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [canDictate, setCanDictate] = useState(false);
+  const [listening, setListening] = useState(false);
+  const recRef = useRef<Recognition | null>(null);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [voiceOut, setVoiceOut] = useState(false);
+  const stopSpeakRef = useRef<(() => void) | null>(null);
+
+  // Grow the box for dictated text too, not only for typing.
+  useEffect(() => {
+    const node = fieldRef.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${Math.min(node.scrollHeight, 160)}px`;
+  }, [draft]);
+
+  useEffect(() => {
+    setCanDictate(Boolean(recognitionCtor()));
+    setVoiceOut(canSpeak());
+    return () => {
+      recRef.current?.abort();
+      if (canSpeak()) window.speechSynthesis.cancel();
+    };
+  }, []);
 
   useEffect(() => {
     void useChatStore.persist.rehydrate();
@@ -65,37 +116,138 @@ export function NexoApp() {
     }
   }
 
-  async function send(text: string, photo: PreparedImage | null = null) {
+  async function pickDocument(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    setReadingDoc(true);
+    try {
+      setPendingDoc(await readDocument(file));
+      fieldRef.current?.focus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No pude leer ese archivo.");
+    } finally {
+      setReadingDoc(false);
+      if (docRef.current) docRef.current.value = "";
+    }
+  }
+
+  function toggleDictation() {
+    if (listening) {
+      recRef.current?.stop();
+      return;
+    }
+    const Ctor = recognitionCtor();
+    if (!Ctor || busy) return;
+    setError(null);
+    const base = draft;
+    const rec = new Ctor();
+    rec.lang = "es-AR";
+    rec.interimResults = true;
+    // One phrase per tap: continuous mode repeats words on Android Chrome.
+    rec.continuous = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = (event) => {
+      let spoken = "";
+      for (let i = 0; i < event.results.length; i += 1) spoken += event.results[i][0].transcript;
+      setDraft(appendDictation(base, spoken));
+    };
+    rec.onerror = (event) => {
+      const message = dictationError(event.error);
+      if (message) setError(message);
+    };
+    rec.onend = () => {
+      setListening(false);
+      recRef.current = null;
+      const node = fieldRef.current;
+      if (node) {
+        node.style.height = "auto";
+        node.style.height = `${Math.min(node.scrollHeight, 160)}px`;
+        node.focus();
+      }
+    };
+    recRef.current = rec;
+    try {
+      rec.start();
+      setListening(true);
+    } catch {
+      setError("No pude usar el dictado. Probá de nuevo o escribí la pregunta.");
+    }
+  }
+
+  function toggleSpeak(message: ChatMessage) {
+    if (speakingId === message.id) {
+      stopSpeakRef.current?.();
+      return;
+    }
+    stopSpeakRef.current?.();
+    setSpeakingId(message.id);
+    stopSpeakRef.current = speak(message.content, () => {
+      setSpeakingId((current) => (current === message.id ? null : current));
+    });
+  }
+
+  async function send(
+    text: string,
+    photo: PreparedImage | null = null,
+    doc: DocPayload | null = null,
+  ) {
     const content = text.trim();
-    if ((!content && !photo) || busy || preparing) return;
+    if ((!content && !photo && !doc) || busy || preparing || readingDoc) return;
+    recRef.current?.abort();
     setError(null);
     setDraft("");
     setAttachment(null);
+    setPendingDoc(null);
     if (fieldRef.current) fieldRef.current.style.height = "auto";
     stickRef.current = true;
 
     const store = useChatStore.getState();
-    const threadId = store.ensureThread(content || "Foto de ejercicio");
+    const threadId = store.ensureThread(
+      content || (doc ? doc.name : "Foto de ejercicio"),
+    );
+    const docMeta: DocMeta | undefined = doc
+      ? {
+          name: doc.name,
+          kind: doc.kind,
+          pages: doc.pages,
+          totalPages: doc.totalPages,
+          truncated: doc.truncated,
+        }
+      : undefined;
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
       content,
       ...(photo ? { image: photo.thumb } : {}),
+      ...(docMeta ? { doc: docMeta } : {}),
     };
     const assistantId = crypto.randomUUID();
+    const previousDoc = store.threads.find((thread) => thread.id === threadId)?.doc;
+    if (doc && docMeta) store.setDoc(threadId, { ...docMeta, text: doc.text, messageId: userMessage.id });
     store.appendMessage(threadId, userMessage);
     store.appendMessage(threadId, { id: assistantId, role: "assistant", content: "" });
 
+    const thread = useChatStore.getState().threads.find((item) => item.id === threadId);
+    const activeDoc = thread?.doc?.text ? thread.doc : undefined;
     const history = trimHistory(
-      (useChatStore.getState().threads.find((thread) => thread.id === threadId)?.messages ?? [])
+      (thread?.messages ?? [])
         .filter((message) => message.id !== assistantId && hasPayload(message))
-        .map((message) =>
-          message.id === userMessage.id && photo
-            ? { role: message.role, content: message.content, image: photo.full }
-            : message.role === "user" && (message.image || message.hadImage)
-              ? { role: message.role, content: message.content, hadImage: true }
-              : { role: message.role, content: message.content },
-        ),
+        .map((message) => {
+          const isNew = message.id === userMessage.id;
+          const docNote =
+            !isNew && message.doc && !message.content.trim()
+              ? `[adjuntó el documento «${message.doc.name}»]`
+              : message.content;
+          return {
+            role: message.role,
+            content: docNote,
+            ...(isNew && photo ? { image: photo.full } : {}),
+            ...(!isNew && message.role === "user" && (message.image || message.hadImage)
+              ? { hadImage: true }
+              : {}),
+            ...(isNew && doc ? { newDocument: true } : {}),
+          };
+        }),
     ).messages;
 
     const controller = new AbortController();
@@ -112,6 +264,18 @@ export function NexoApp() {
         signal: controller.signal,
         body: JSON.stringify({
           messages: history,
+          ...(activeDoc
+            ? {
+                document: {
+                  name: activeDoc.name,
+                  kind: activeDoc.kind,
+                  pages: activeDoc.pages,
+                  totalPages: activeDoc.totalPages,
+                  truncated: activeDoc.truncated,
+                  text: activeDoc.text,
+                },
+              }
+            : {}),
         }),
       });
 
@@ -161,10 +325,12 @@ export function NexoApp() {
         if (acc.trim()) useChatStore.getState().patchMessage(threadId, assistantId, acc);
         else {
           useChatStore.getState().dropMessage(threadId, assistantId);
-          if (photo) {
-            // Give the photo back so a retry does not need a new picture.
+          if (photo || doc) {
+            // Give the attachments back so a retry does not need to pick them again.
             useChatStore.getState().dropMessage(threadId, userMessage.id);
+            if (doc) useChatStore.getState().setDoc(threadId, previousDoc);
             setAttachment(photo);
+            setPendingDoc(doc);
             setDraft(content);
           }
         }
@@ -235,6 +401,8 @@ export function NexoApp() {
                 <Message
                   key={message.id}
                   message={message}
+                  speaking={speakingId === message.id}
+                  onSpeak={voiceOut ? () => toggleSpeak(message) : undefined}
                   streaming={busy && index === active.messages.length - 1 && message.role === "assistant"}
                   phase={phase}
                 />
@@ -249,7 +417,7 @@ export function NexoApp() {
           className="shrink-0 px-3 pt-2 pb-3 md:px-5"
           onSubmit={(event) => {
             event.preventDefault();
-            void send(draft, attachment);
+            void send(draft, attachment, pendingDoc);
           }}
         >
           <div className="mx-auto max-w-2xl">
@@ -289,8 +457,52 @@ export function NexoApp() {
                 </p>
               </div>
             ) : null}
+            {pendingDoc ? (
+              <div className="attach-preview mb-2 flex items-center gap-3">
+                <DocChip doc={pendingDoc} />
+                <button
+                  type="button"
+                  aria-label="Quitar documento"
+                  onClick={() => setPendingDoc(null)}
+                  className="tap grid size-9 shrink-0 place-items-center rounded-full border border-line text-fg"
+                >
+                  <X className="size-3.5" strokeWidth={2} />
+                </button>
+              </div>
+            ) : active?.doc ? (
+              <div className="mb-2 flex items-center gap-2 text-xs leading-relaxed text-faint">
+                <FileText className="size-4 shrink-0 text-neon" strokeWidth={1.5} />
+                <p className="min-w-0 flex-1">
+                  {active.doc.text ? (
+                    <>
+                      Usando <span className="text-muted">«{active.doc.name}»</span> en cada pregunta
+                      {active.doc.truncated ? " (solo una parte)" : ""}.
+                    </>
+                  ) : (
+                    <>
+                      «{active.doc.name}» ya no está guardado en este navegador. Adjuntalo de nuevo
+                      para seguir preguntando sobre él.
+                    </>
+                  )}
+                </p>
+                <button
+                  type="button"
+                  aria-label="Quitar el documento de esta conversación"
+                  onClick={() => useChatStore.getState().setDoc(active.id, undefined)}
+                  className="tap grid size-9 shrink-0 place-items-center text-faint hover:text-fg"
+                >
+                  <X className="size-3.5" strokeWidth={2} />
+                </button>
+              </div>
+            ) : null}
+            {listening ? (
+              <p className="mb-2 flex items-center gap-2 font-mono text-xs tracking-widest text-neon uppercase">
+                <span className="hud-dot size-1.5 rounded-full" aria-hidden="true" />
+                Escuchando…
+              </p>
+            ) : null}
             <div className="hud-frame">
-              <div className="dock flex items-end gap-2 rounded-sm p-2">
+              <div className="dock relative flex items-end gap-2 rounded-sm p-2">
                 <input
                   ref={fileRef}
                   type="file"
@@ -298,17 +510,68 @@ export function NexoApp() {
                   className="hidden"
                   onChange={(event) => void pickImage(event.target.files?.[0])}
                 />
+                <input
+                  ref={docRef}
+                  type="file"
+                  accept={DOC_ACCEPT}
+                  className="hidden"
+                  onChange={(event) => void pickDocument(event.target.files?.[0])}
+                />
+                {menu ? (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Cerrar menú de adjuntos"
+                      className="fixed inset-0 z-10 cursor-default"
+                      onClick={() => setMenu(false)}
+                    />
+                    <div
+                      role="menu"
+                      className="attach-menu absolute bottom-full left-0 z-20 mb-2 w-64 rounded-sm border border-line bg-bg-elev p-1.5 shadow-lg"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="tap flex h-12 w-full items-center gap-3 rounded-sm px-3 text-left text-sm text-fg hover:bg-bg-soft"
+                        onClick={() => {
+                          setMenu(false);
+                          fileRef.current?.click();
+                        }}
+                      >
+                        <Camera className="size-5 text-neon" strokeWidth={1.5} />
+                        Foto del ejercicio
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="tap flex h-12 w-full items-center gap-3 rounded-sm px-3 text-left text-sm text-fg hover:bg-bg-soft"
+                        onClick={() => {
+                          setMenu(false);
+                          docRef.current?.click();
+                        }}
+                      >
+                        <FileText className="size-5 text-neon" strokeWidth={1.5} />
+                        <span>
+                          PDF o apunte
+                          <span className="block text-xs text-faint">.pdf, .txt o .md</span>
+                        </span>
+                      </button>
+                    </div>
+                  </>
+                ) : null}
                 <button
                   type="button"
-                  aria-label="Adjuntar foto del ejercicio"
-                  title="Adjuntar foto del ejercicio"
-                  disabled={busy || preparing}
-                  onClick={() => fileRef.current?.click()}
+                  aria-label="Adjuntar foto o documento"
+                  title="Adjuntar foto o documento"
+                  aria-haspopup="menu"
+                  aria-expanded={menu}
+                  disabled={busy || preparing || readingDoc}
+                  onClick={() => setMenu((open) => !open)}
                   className={`tap hud-btn grid size-11 shrink-0 place-items-center rounded-sm border border-line text-muted disabled:text-faint ${
-                    attachment ? "border-neon/60 text-neon" : ""
-                  } ${preparing ? "animate-pulse" : ""}`}
+                    attachment || pendingDoc ? "border-neon/60 text-neon" : ""
+                  } ${preparing || readingDoc ? "animate-pulse" : ""}`}
                 >
-                  <Camera className="size-5" strokeWidth={1.5} />
+                  <Paperclip className="size-5" strokeWidth={1.5} />
                 </button>
                 <label className="sr-only" htmlFor="pregunta">
                   Pregunta
@@ -318,7 +581,15 @@ export function NexoApp() {
                   ref={fieldRef}
                   rows={1}
                   value={draft}
-                  placeholder={attachment ? "¿Qué necesitás de la foto? (opcional)" : "Pregunta algo concreto"}
+                  placeholder={
+                    listening
+                      ? "Te escucho…"
+                      : attachment
+                        ? "¿Qué necesitás de la foto? (opcional)"
+                        : pendingDoc
+                          ? "¿Qué querés saber del documento? (opcional)"
+                          : "Pregunta algo concreto"
+                  }
                   className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-base text-fg caret-neon outline-none placeholder:text-faint"
                   onChange={(event) => {
                     setDraft(event.target.value);
@@ -329,14 +600,32 @@ export function NexoApp() {
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
-                      void send(draft, attachment);
+                      void send(draft, attachment, pendingDoc);
                     }
                   }}
                 />
+                {canDictate ? (
+                  <button
+                    type="button"
+                    aria-label={listening ? "Terminar dictado" : "Dictar la pregunta"}
+                    title={listening ? "Terminar dictado" : "Dictar la pregunta"}
+                    aria-pressed={listening}
+                    disabled={busy}
+                    onClick={toggleDictation}
+                    className={`tap hud-btn grid size-11 shrink-0 place-items-center rounded-sm border text-muted disabled:text-faint ${
+                      listening ? "mic-live border-neon/70 text-neon" : "border-line"
+                    }`}
+                  >
+                    <Mic className="size-5" strokeWidth={1.5} />
+                  </button>
+                ) : null}
                 <button
                   type={busy ? "button" : "submit"}
                   aria-label={busy ? "Detener" : "Enviar"}
-                  disabled={!busy && ((!draft.trim() && !attachment) || preparing)}
+                  disabled={
+                    !busy &&
+                    ((!draft.trim() && !attachment && !pendingDoc) || preparing || readingDoc)
+                  }
                   onClick={busy ? stop : undefined}
                   className="tap send-btn grid size-11 shrink-0 place-items-center rounded-sm bg-neon text-ink disabled:bg-bg-soft disabled:text-faint"
                 >
@@ -579,7 +868,29 @@ function Empty({ onPick }: { onPick: (prompt: string) => void }) {
 }
 
 function hasPayload(message: ChatMessage) {
-  return Boolean(message.content.trim() || message.image || message.hadImage);
+  return Boolean(message.content.trim() || message.image || message.hadImage || message.doc);
+}
+
+function DocChip({ doc }: { doc: DocMeta }) {
+  const partial =
+    doc.truncated ||
+    (doc.kind === "pdf" && doc.pages && doc.totalPages && doc.pages < doc.totalPages);
+  return (
+    <span className="doc-chip flex min-w-0 items-center gap-2.5 rounded-sm border border-neon/35 bg-bg-elev/80 px-3 py-2">
+      <FileText className="size-5 shrink-0 text-neon" strokeWidth={1.5} />
+      <span className="min-w-0">
+        <span className="block truncate text-sm text-fg">{doc.name}</span>
+        <span className="block font-mono text-xs text-faint">
+          {describeDoc(doc)}
+          {partial
+            ? doc.kind === "pdf" && doc.pages
+              ? ` · se leyeron ${doc.pages}`
+              : " · recortado"
+            : ""}
+        </span>
+      </span>
+    </span>
+  );
 }
 
 function stripCites(text: string) {
@@ -598,10 +909,14 @@ function Message({
   message,
   streaming,
   phase,
+  speaking,
+  onSpeak,
 }: {
   message: ChatMessage;
   streaming: boolean;
   phase: "idle" | "search" | "write";
+  speaking: boolean;
+  onSpeak?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -621,6 +936,7 @@ function Message({
               Foto enviada (ya no se guarda)
             </span>
           ) : null}
+          {message.doc ? <DocChip doc={message.doc} /> : null}
           {message.content ? <p className="px-2 py-1 whitespace-pre-wrap">{message.content}</p> : null}
         </div>
       </div>
@@ -637,6 +953,24 @@ function Message({
           </span>
         </span>
         {message.content && !streaming ? (
+          <span className="flex items-center">
+          {onSpeak ? (
+            <button
+              type="button"
+              aria-pressed={speaking}
+              className={`tap hud-btn flex h-11 items-center gap-1.5 px-2 text-xs ${
+                speaking ? "text-neon" : "text-faint"
+              }`}
+              onClick={onSpeak}
+            >
+              {speaking ? (
+                <Square className="size-3.5" strokeWidth={1.75} />
+              ) : (
+                <Volume2 className="size-3.5" strokeWidth={1.75} />
+              )}
+              {speaking ? "Detener" : "Escuchar"}
+            </button>
+          ) : null}
           <button
             type="button"
             className="tap hud-btn flex h-11 items-center gap-1.5 px-2 text-xs text-faint"
@@ -657,6 +991,7 @@ function Message({
             </span>
             {copied ? "Copiado" : "Copiar"}
           </button>
+          </span>
         ) : null}
       </div>
       <div className="assistant-rail border-l border-line pl-4">
