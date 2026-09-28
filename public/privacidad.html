@@ -25,6 +25,10 @@
 <p>Para evitar abusos, el servidor limita el número de preguntas por minuto. Cuando el servicio tiene una base de datos configurada, se guarda un <strong>hash SHA-256 de tu dirección IP</strong> (nunca la IP en claro) junto con la hora de cada petición. Estos registros se eliminan automáticamente a los pocos minutos. Si no hay base de datos configurada, el límite se aplica solo en memoria y no se guarda nada.</p>
 <h3>1.4 Datos técnicos de alojamiento</h3>
 <p>La app está alojada en la plataforma de Grok/xAI (dominio grok.me). Como cualquier servidor web, el proveedor de alojamiento puede registrar datos técnicos de las peticiones (dirección IP, fecha y hora, navegador) con fines de seguridad y funcionamiento, de acuerdo con sus propias políticas. La interfaz carga tipografías desde Google Fonts, lo que implica que Google recibe tu dirección IP al descargar las fuentes.</p>
+<h3>1.5 Fotos, documentos y voz</h3>
+<p><strong>Fotos:</strong> si adjuntás una foto de un ejercicio, se achica en tu dispositivo y se envía una sola vez, junto con tu pregunta, a nuestro servidor y a la API de xAI para leerla. En el historial local solo queda una miniatura (las más viejas se borran solas).</p>
+<p><strong>PDF y apuntes (.pdf, .txt, .md):</strong> el texto se extrae en tu dispositivo; el archivo no se sube. Ese texto (hasta un máximo de páginas y caracteres) se envía con cada pregunta de esa conversación a nuestro servidor y a xAI para responder sobre el documento. Se guarda en el almacenamiento local solo para las conversaciones más recientes; podés quitarlo de la conversación cuando quieras.</p>
+<p><strong>Dictado por voz:</strong> al tocar el micrófono, el audio lo procesa el reconocimiento de voz de tu navegador o de tu teléfono (por ejemplo, el servicio de voz de Google en Android/Chrome), según sus propias políticas. NEXO AI no graba ni guarda audio: solo recibe el texto transcrito, que podés revisar antes de enviar. <strong>Escuchar</strong> una respuesta usa la voz de tu propio dispositivo.</p>
 <h2>2. Base legal</h2>
 <p>Tratamos los datos descritos para prestarte el servicio que solicitas (responder a tus preguntas) y por nuestro interés legítimo en proteger el servicio frente a abusos.</p>
 <h2>3. Compartición de datos</h2>
@@ -47,7 +51,7 @@
 <h2>7. Tus derechos</h2>
 <p>Como no tenemos cuentas ni guardamos tus conversaciones, la mayoría de los datos están solo en tu dispositivo y puedes borrarlos tú mismo. Para cualquier consulta o para ejercer tus derechos de acceso, rectificación o supresión, escríbenos a <strong>jerecardenas2007@gmail.com</strong>.</p>
 <h2>8. Permisos de la app Android</h2>
-<p>La app de Android solo necesita acceso a internet para mostrar la web de NEXO AI. No accede a tu ubicación, contactos, cámara, micrófono ni archivos.</p>
+<p>La app de Android usa internet para hablar con el servidor de NEXO AI. El <strong>micrófono</strong> se pide solo cuando tocás el botón de dictado, y se usa únicamente para transcribir tu pregunta. La <strong>cámara</strong>, la <strong>galería</strong> y los <strong>archivos</strong> se abren solo cuando vos elegís adjuntar una foto o un documento, y la app accede únicamente al archivo que elegís. No accede a tu ubicación ni a tus contactos.</p>
 <h2>9. Cambios en esta política</h2>
 <p>Si cambiamos esta política, actualizaremos la fecha de «Última actualización» en esta página.</p>
 <h2>10. Contacto</h2>
