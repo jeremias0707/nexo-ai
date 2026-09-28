@@ -1,5 +1,3 @@
-import { dbSource, getSql } from "@/lib/db";
-
 /**
  * Sliding-window rate limit for /api/chat: MAX_HITS accepted requests per
  * WINDOW_MS per client.
@@ -10,11 +8,15 @@ import { dbSource, getSql } from "@/lib/db";
  * PGLite fallback is in-memory and per-instance — no better than a Map and much
  * heavier to boot — so we use the in-memory limiter directly. Any DB error or
  * slow response also falls back to memory so chat never breaks because of it.
+ *
+ * `@/lib/db` is imported lazily and only when DATABASE_URL is set: importing it
+ * without one eagerly boots PGLite, which the production bundle cannot load.
  */
 export const WINDOW_MS = 60_000;
 export const MAX_HITS = 12;
 const DB_TIMEOUT_MS = 1_500;
 const PRUNE_EVERY = 50;
+const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
 
 // ---- In-memory fallback (per instance) ----------------------------------
 
@@ -45,6 +47,7 @@ async function hashKey(ip: string) {
 }
 
 async function tooManyInDb(ip: string) {
+  const { getSql } = await import("@/lib/db");
   const sql = await getSql();
   const key = await hashKey(ip);
   const seconds = WINDOW_MS / 1000;
@@ -91,7 +94,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number) {
 
 /** True when this client already used its quota for the current window. */
 export async function tooManyRequests(ip: string): Promise<boolean> {
-  if (dbSource !== "neon") return tooManyInMemory(ip);
+  if (!hasDatabaseUrl) return tooManyInMemory(ip);
   try {
     return await withTimeout(tooManyInDb(ip), DB_TIMEOUT_MS);
   } catch (error) {

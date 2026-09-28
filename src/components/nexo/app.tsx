@@ -157,11 +157,11 @@ export function NexoApp() {
         <Sidebar link={link} onFresh={fresh} onNavigate={() => setDrawer(false)} />
       </MobileDrawer>
 
-      <section className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-3 md:px-5">
+      <section className="hud-surface flex min-w-0 flex-1 flex-col">
+        <header className="hud-header flex h-14 shrink-0 items-center gap-2 border-b border-line px-3 md:px-5">
           <button
             type="button"
-            className="tap grid size-11 place-items-center rounded-md border border-line md:hidden"
+            className="tap hud-btn grid size-11 place-items-center rounded-md border border-line md:hidden"
             aria-label="Abrir conversaciones"
             onClick={() => setDrawer(true)}
           >
@@ -171,12 +171,17 @@ export function NexoApp() {
             <Mark className="size-7" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{active ? active.title : "Nueva conversación"}</p>
+            <p className="font-display text-xs leading-none font-semibold tracking-widest text-neon uppercase">
+              NEXO AI
+            </p>
+            <p className="mt-1 truncate text-sm leading-tight font-medium">
+              {active ? active.title : "Nueva conversación"}
+            </p>
           </div>
-          <Status link={link} compact />
+          <HudStatus link={link} />
           <button
             type="button"
-            className="tap grid size-11 place-items-center rounded-md border border-line"
+            className="tap hud-btn grid size-11 place-items-center rounded-md border border-line"
             aria-label="Nueva conversación"
             onClick={fresh}
           >
@@ -186,7 +191,7 @@ export function NexoApp() {
 
         <div ref={scrollerRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
           {chatting && active ? (
-            <div className="mx-auto flex max-w-2xl flex-col gap-7 px-4 py-8 md:px-6">
+            <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-8 md:px-6">
               {active.messages.map((message, index) => (
                 <Message
                   key={message.id}
@@ -209,54 +214,61 @@ export function NexoApp() {
           }}
         >
           <div className="mx-auto max-w-2xl">
-            {error ? <p className="mb-2 text-sm text-muted">{error}</p> : null}
+            {error ? (
+              <p className="mb-2 flex items-center gap-2 text-sm text-muted">
+                <span className="size-1.5 shrink-0 rounded-full bg-accent-r" aria-hidden="true" />
+                {error}
+              </p>
+            ) : null}
             {trimmed && !error ? (
               <p className="mb-2 text-xs text-faint">
                 Los mensajes más antiguos de esta conversación ya no se envían al tutor.
               </p>
             ) : null}
-            <div className="dock flex items-end gap-2 rounded-lg p-2">
-              <label className="sr-only" htmlFor="pregunta">
-                Pregunta
-              </label>
-              <textarea
-                id="pregunta"
-                ref={fieldRef}
-                rows={1}
-                value={draft}
-                placeholder="Pregunta algo concreto"
-                className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-base text-fg outline-none placeholder:text-faint"
-                onChange={(event) => {
-                  setDraft(event.target.value);
-                  const node = event.target;
-                  node.style.height = "auto";
-                  node.style.height = `${Math.min(node.scrollHeight, 160)}px`;
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void send(draft);
-                  }
-                }}
-              />
-              <button
-                type={busy ? "button" : "submit"}
-                aria-label={busy ? "Detener" : "Enviar"}
-                disabled={!busy && !draft.trim()}
-                onClick={busy ? stop : undefined}
-                className="tap grid size-11 shrink-0 place-items-center rounded-md bg-paper text-ink disabled:opacity-40"
-              >
-                <span className="icon-slot">
-                  <span className={busy ? "icon-on" : "icon-off"}>
-                    <Square className="size-4" strokeWidth={1.75} />
+            <div className="hud-frame">
+              <div className="dock flex items-end gap-2 rounded-sm p-2">
+                <label className="sr-only" htmlFor="pregunta">
+                  Pregunta
+                </label>
+                <textarea
+                  id="pregunta"
+                  ref={fieldRef}
+                  rows={1}
+                  value={draft}
+                  placeholder="Pregunta algo concreto"
+                  className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-base text-fg caret-neon outline-none placeholder:text-faint"
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    const node = event.target;
+                    node.style.height = "auto";
+                    node.style.height = `${Math.min(node.scrollHeight, 160)}px`;
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void send(draft);
+                    }
+                  }}
+                />
+                <button
+                  type={busy ? "button" : "submit"}
+                  aria-label={busy ? "Detener" : "Enviar"}
+                  disabled={!busy && !draft.trim()}
+                  onClick={busy ? stop : undefined}
+                  className="tap send-btn grid size-11 shrink-0 place-items-center rounded-sm bg-neon text-ink disabled:bg-bg-soft disabled:text-faint"
+                >
+                  <span className="icon-slot">
+                    <span className={busy ? "icon-on" : "icon-off"}>
+                      <Square className="size-4" strokeWidth={1.75} />
+                    </span>
+                    <span className={busy ? "icon-off" : "icon-on"}>
+                      <ArrowUp className="size-5" strokeWidth={1.75} />
+                    </span>
                   </span>
-                  <span className={busy ? "icon-off" : "icon-on"}>
-                    <ArrowUp className="size-5" strokeWidth={1.75} />
-                  </span>
-                </span>
-              </button>
+                </button>
+              </div>
             </div>
-            <p className="mt-2 text-xs text-faint">
+            <p className="mt-2.5 text-xs leading-relaxed text-faint">
               {link === "online"
                 ? "En línea, con búsqueda web."
                 : link === "offline"
@@ -299,6 +311,20 @@ function Status({ link, compact = false }: { link: LinkState; compact?: boolean 
         aria-hidden="true"
       />
       <span className={compact ? "hidden sm:inline" : ""}>{label}</span>
+    </p>
+  );
+}
+
+function HudStatus({ link }: { link: LinkState }) {
+  const label = link === "online" ? "En línea" : link === "offline" ? "Sin modelo" : "Conectando";
+  return (
+    <p className="flex h-7 shrink-0 items-center gap-1.5 rounded-sm border border-line px-2 font-mono text-xs tracking-wider text-muted uppercase">
+      <span
+        className={`hud-dot size-1.5 rounded-full ${link === "offline" ? "off" : ""}`}
+        aria-hidden="true"
+      />
+      <span className="hidden min-[380px]:inline">{label}</span>
+      <span className="sr-only min-[380px]:hidden">{label}</span>
     </p>
   );
 }
@@ -430,20 +456,37 @@ function Sidebar({
 
 function Empty({ onPick }: { onPick: (prompt: string) => void }) {
   return (
-    <div className="mx-auto flex h-full max-w-lg flex-col justify-center px-5 py-8">
-      <div className="rise text-paper">
-        <Mark className="size-14" />
+    <div className="mx-auto flex min-h-full max-w-lg flex-col justify-center px-5 py-10">
+      <div className="rise flex items-center gap-4">
+        <span className="hud-frame grid size-16 place-items-center text-paper">
+          <Mark className="size-12" />
+        </span>
+        <div className="font-mono text-xs leading-relaxed tracking-widest uppercase">
+          <p className="text-neon">Tutor listo</p>
+          <p className="text-faint">Sesión nueva</p>
+        </div>
       </div>
-      <h1 className="rise rise-2 mt-5 font-serif text-4xl leading-tight text-balance text-paper">Pregunta un tema.</h1>
-      <ul className="rise rise-3 mt-6 grid grid-cols-2 gap-1.5">
-        {STARTERS.map((item) => (
+      <h1 className="rise rise-2 mt-8 font-display text-4xl leading-none font-semibold tracking-tight text-balance text-paper">
+        Pregunta un tema<span className="text-neon">.</span>
+      </h1>
+      <p className="rise rise-2 mt-3 text-base leading-relaxed text-muted">
+        Elige una misión rápida o escribe la tuya.
+      </p>
+      <p className="rise rise-3 mt-8 mb-2.5 font-mono text-xs tracking-widest text-faint uppercase">
+        Misiones rápidas
+      </p>
+      <ul className="rise rise-3 grid grid-cols-2 gap-2">
+        {STARTERS.map((item, index) => (
           <li key={item.name}>
             <button
               type="button"
               onClick={() => onPick(item.prompt)}
-              className="tap h-11 w-full rounded-md border border-line px-3 text-left text-sm text-muted hover:text-fg"
+              className="tap chip flex h-12 w-full items-center gap-2.5 rounded-sm border border-line bg-bg-elev/70 px-3 text-left text-sm text-muted"
             >
-              {item.name}
+              <span className="chip-index font-mono text-xs text-faint">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span className="truncate">{item.name}</span>
             </button>
           </li>
         ))}
@@ -478,7 +521,9 @@ function Message({
   if (message.role === "user") {
     return (
       <div className="msg-in flex justify-end">
-        <p className="max-w-[85%] rounded-lg bg-paper px-4 py-3 text-base leading-relaxed text-ink">{message.content}</p>
+        <p className="max-w-[85%] rounded-md rounded-br-sm border border-neon/25 bg-neon/10 px-4 py-3 text-base leading-relaxed text-fg">
+          {message.content}
+        </p>
       </div>
     );
   }
@@ -488,12 +533,14 @@ function Message({
       <div className="mb-2 flex items-center justify-between text-paper">
         <span className="flex items-center gap-2">
           <Mark className="size-5" />
-          <span className="text-xs tracking-wide text-faint">NEXO AI</span>
+          <span className="font-display text-xs font-semibold tracking-widest text-faint uppercase">
+            NEXO AI
+          </span>
         </span>
         {message.content && !streaming ? (
           <button
             type="button"
-            className="tap flex h-11 items-center gap-1.5 px-2 text-xs text-faint hover:text-fg"
+            className="tap hud-btn flex h-11 items-center gap-1.5 px-2 text-xs text-faint"
             onClick={() => {
               void navigator.clipboard.writeText(message.content).then(() => {
                 setCopied(true);
@@ -513,31 +560,33 @@ function Message({
           </button>
         ) : null}
       </div>
-      {message.content ? (
-        <Lesson content={message.content} />
-      ) : (
-        <p className="flex items-center gap-2 text-sm text-muted">
-          <span className="online-dot size-1.5 rounded-full" />
-          {phase === "search" ? "Buscando en la web" : "Consultando"}
-        </p>
-      )}
-      {streaming && message.content ? <span className="caret" aria-hidden="true" /> : null}
-      {message.sources && message.sources.length > 0 ? (
-        <ul className="mt-3 flex flex-wrap gap-1.5">
-          {message.sources.map((url) => (
-            <li key={url}>
-              <a
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-11 items-center rounded-md border border-line px-3 text-xs text-muted hover:text-fg"
-              >
-                {hostOf(url)}
-              </a>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <div className="assistant-rail border-l border-line pl-4">
+        {message.content ? (
+          <Lesson content={message.content} />
+        ) : (
+          <p className="flex h-7 items-center gap-2.5 font-mono text-xs tracking-widest text-muted uppercase">
+            <span className="scan-bar" aria-hidden="true" />
+            {phase === "search" ? "Buscando en la web" : "Consultando"}
+          </p>
+        )}
+        {streaming && message.content ? <span className="caret" aria-hidden="true" /> : null}
+        {message.sources && message.sources.length > 0 ? (
+          <ul className="mt-4 flex flex-wrap gap-1.5">
+            {message.sources.map((url) => (
+              <li key={url}>
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="chip inline-flex h-11 items-center rounded-sm border border-line px-3 font-mono text-xs text-muted"
+                >
+                  {hostOf(url)}
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
     </article>
   );
 }

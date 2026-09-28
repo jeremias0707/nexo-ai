@@ -27,5 +27,6 @@ export function trimHistory<T extends Turn>(
   // Start the window on a user turn so the model never sees an orphan reply.
   while (kept.length > 1 && kept[0].role !== "user") kept.shift();
 
-  return { messages: kept, dropped: messages.length - kept.length };
+  // Only older turns count as dropped (anything after the last user turn is not "older").
+  return { messages: kept, dropped: lastUser + 1 - kept.length };
 }

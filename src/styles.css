@@ -5,6 +5,7 @@
   --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Instrument Serif", "Times New Roman", serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: "Chakra Petch", "IBM Plex Mono", ui-monospace, sans-serif;
 
   --color-bg: #050505;
   --color-bg-elev: #0e0e0e;
@@ -19,6 +20,8 @@
   --color-accent-r: #e85d4c;
   --color-accent-g: #3ecf8e;
   --color-accent-b: #5b8def;
+  /* Main chat screen only: one neon accent, used sparingly. */
+  --color-neon: #3ee6f0;
 
   --radius-sm: 8px;
   --radius-md: 14px;
@@ -81,7 +84,8 @@
   height: 1em;
   margin-left: 2px;
   vertical-align: text-bottom;
-  background: var(--color-paper);
+  background: var(--color-neon);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--color-neon) 60%, transparent);
   animation: caret 1s steps(1) infinite;
 }
 
@@ -160,17 +164,170 @@
   scale: 0.25;
 }
 
-.dock {
-  border: 1px solid var(--color-line);
-  background: var(--color-bg-elev);
+/* ---- HUD chat screen (the sidebar keeps its original styles) ---------- */
+
+.hud-surface {
+  background-color: var(--color-bg);
+  background-image:
+    radial-gradient(
+      70% 45% at 50% 0%,
+      color-mix(in oklab, var(--color-neon) 7%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(ellipse 90% 70% at 50% 35%, transparent 0%, var(--color-bg) 90%),
+    linear-gradient(color-mix(in oklab, var(--color-fg) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--color-fg) 4%, transparent) 1px,
+      transparent 1px
+    );
+  background-size:
+    100% 100%,
+    100% 100%,
+    32px 32px,
+    32px 32px;
+}
+
+.hud-header {
+  position: relative;
+  background: color-mix(in oklab, var(--color-bg) 78%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.hud-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 38%;
+  height: 1px;
+  background: linear-gradient(90deg, var(--color-neon), transparent);
+  opacity: 0.55;
+}
+
+.hud-btn {
+  transition:
+    scale 150ms ease-out,
+    border-color 200ms ease,
+    color 200ms ease;
+}
+
+.hud-btn:hover {
+  border-color: color-mix(in oklab, var(--color-neon) 45%, transparent);
+  color: var(--color-neon);
+}
+
+/* Two-corner bracket frame. */
+.hud-frame {
+  position: relative;
+}
+
+.hud-frame::before,
+.hud-frame::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+  border-color: color-mix(in oklab, var(--color-neon) 70%, transparent);
+  border-style: solid;
   transition: border-color 200ms ease;
 }
 
+.hud-frame::before {
+  top: -4px;
+  left: -4px;
+  border-width: 1px 0 0 1px;
+}
+
+.hud-frame::after {
+  right: -4px;
+  bottom: -4px;
+  border-width: 0 1px 1px 0;
+}
+
+.hud-dot {
+  background: var(--color-neon);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--color-neon) 70%, transparent);
+  animation: hud-pulse 2.4s ease-in-out infinite;
+}
+
+.hud-dot.off {
+  background: var(--color-accent-r);
+  box-shadow: none;
+  animation: none;
+}
+
+.chip {
+  transition:
+    scale 150ms ease-out,
+    border-color 200ms ease,
+    color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.chip:hover,
+.chip:focus-visible {
+  border-color: color-mix(in oklab, var(--color-neon) 50%, transparent);
+  color: var(--color-fg);
+  box-shadow: 0 0 18px -6px color-mix(in oklab, var(--color-neon) 45%, transparent);
+}
+
+.chip:hover .chip-index,
+.chip:focus-visible .chip-index {
+  color: var(--color-neon);
+}
+
+.assistant-rail {
+  position: relative;
+}
+
+.assistant-rail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -1px;
+  width: 1px;
+  height: 28px;
+  background: var(--color-neon);
+  box-shadow: 0 0 8px var(--color-neon);
+}
+
+.scan-bar {
+  position: relative;
+  width: 36px;
+  height: 2px;
+  overflow: hidden;
+  background: var(--color-line);
+}
+
+.scan-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: var(--color-neon);
+  box-shadow: 0 0 6px var(--color-neon);
+  animation: scan 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+
+.dock {
+  border: 1px solid var(--color-line);
+  background: color-mix(in oklab, var(--color-bg-elev) 92%, transparent);
+  transition:
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
 .dock:focus-within {
-  border-color: transparent;
-  background:
-    linear-gradient(var(--color-bg-elev), var(--color-bg-elev)) padding-box,
-    linear-gradient(120deg, var(--color-accent-r), var(--color-accent-g), var(--color-accent-b)) border-box;
+  border-color: color-mix(in oklab, var(--color-neon) 55%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in oklab, var(--color-neon) 12%, transparent),
+    0 0 28px -8px color-mix(in oklab, var(--color-neon) 50%, transparent);
+}
+
+.send-btn:not(:disabled) {
+  box-shadow: 0 0 16px -4px color-mix(in oklab, var(--color-neon) 70%, transparent);
 }
 
 @keyframes caret {
@@ -195,6 +352,25 @@
   }
 }
 
+@keyframes hud-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes scan {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -213,14 +389,20 @@
   .mark-orbit,
   .online-dot,
   .rise,
-  .msg-in {
+  .msg-in,
+  .hud-dot,
+  .scan-bar::after {
     animation: none;
   }
 
   .drawer-panel,
   .tap,
   .icon-slot > span,
-  .dock {
+  .dock,
+  .chip,
+  .hud-btn,
+  .hud-frame::before,
+  .hud-frame::after {
     transition: none;
   }
 }
