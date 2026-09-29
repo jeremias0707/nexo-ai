@@ -1,19 +1,24 @@
 import { useEffect } from "react";
 import {
+  Bookmark,
   BookOpen,
   Camera,
   ChevronLeft,
   Compass,
   FileText,
+  Flag,
   Flame,
   GraduationCap,
   Images,
+  Layers,
   Lock,
   MessageSquare,
   Moon,
   Star,
+  Sun,
   Target,
   Trophy,
+  User,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -36,6 +41,11 @@ const ICONS: Record<MedalIcon, LucideIcon> = {
   trophy: Trophy,
   message: MessageSquare,
   zap: Zap,
+  bookmark: Bookmark,
+  user: User,
+  sun: Sun,
+  layers: Layers,
+  flag: Flag,
 };
 
 export function MedalGlyph({

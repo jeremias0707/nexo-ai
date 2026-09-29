@@ -15,11 +15,15 @@ import {
   Square,
   Target,
   Settings,
+  Star,
   Trophy,
   Volume2,
+  Flag,
+  Layers,
   X,
 } from "lucide-react";
 import { ExamView } from "@/components/nexo/exam";
+import { CardsView, FavoritesView, IdentityView, MenuIdentity, WeekView } from "@/components/nexo/local-screens";
 import { SettingsView } from "@/components/nexo/settings";
 import { CelebrationOverlay, HudBar, ProfileView } from "@/components/nexo/progress-ui";
 import { useMistakeCount } from "@/lib/use-mistakes";
@@ -32,7 +36,9 @@ import { describeDoc, type DocPayload } from "@/lib/document";
 import { DOC_ACCEPT, readDocument } from "@/lib/document-client";
 import { trimHistory } from "@/lib/history";
 import { prepareImage, type PreparedImage } from "@/lib/image-client";
+import { useCardsStore, useFavoritesStore, useProfileStore, useWeekStore } from "@/lib/local-store";
 import { useProgressStore } from "@/lib/progress-store";
+import { nickCounts } from "@/lib/profile";
 import { useSettingsStore } from "@/lib/settings-store";
 import {
   appendDictation,
@@ -45,7 +51,7 @@ import {
 import { MISSIONS, pickMissions, type Mission } from "@/lib/missions";
 
 type LinkState = "checking" | "online" | "offline";
-type View = "chat" | "profile" | "exam" | "review" | "settings";
+type View = "chat" | "profile" | "exam" | "review" | "settings" | "identity" | "favorites" | "cards" | "week";
 
 export function NexoApp() {
   const threads = useChatStore((state) => state.threads);
@@ -96,11 +102,26 @@ export function NexoApp() {
   const theme = useSettingsStore((state) => state.theme);
   const textSize = useSettingsStore((state) => state.text);
   const explain = useSettingsStore((state) => state.explain);
+  const reply = useSettingsStore((state) => state.reply);
 
   useEffect(() => {
-    void useChatStore.persist.rehydrate();
-    void useProgressStore.persist.rehydrate();
-    void useSettingsStore.persist.rehydrate();
+    void (async () => {
+      await Promise.all([
+        useChatStore.persist.rehydrate(),
+        useProgressStore.persist.rehydrate(),
+        useSettingsStore.persist.rehydrate(),
+        useProfileStore.persist.rehydrate(),
+        useFavoritesStore.persist.rehydrate(),
+        useCardsStore.persist.rehydrate(),
+        useWeekStore.persist.rehydrate(),
+      ]);
+      const settings = useSettingsStore.getState();
+      if (settings.theme === "claro")
+        useProgressStore.getState().record({ kind: "mark", mark: "claro" });
+      const profile = useProfileStore.getState();
+      if (profile.photo) useProgressStore.getState().record({ kind: "mark", mark: "photo" });
+      if (nickCounts(profile.nick)) useProgressStore.getState().record({ kind: "mark", mark: "nick" });
+    })();
   }, []);
 
   useEffect(() => {
@@ -289,6 +310,7 @@ export function NexoApp() {
         body: JSON.stringify({
           messages: history,
           explain,
+          ...(reply !== "normal" ? { reply } : {}),
           ...(activeDoc
             ? {
                 document: {
@@ -348,6 +370,7 @@ export function NexoApp() {
           photo: Boolean(photo),
           pdf: Boolean(doc),
         });
+        useWeekStore.getState().note("questions");
       }
     } catch (err) {
       if (controller.signal.aborted) {
@@ -410,6 +433,14 @@ export function NexoApp() {
       <section className="hud-surface flex min-w-0 flex-1 flex-col">
         {view === "profile" ? (
           <ProfileView onBack={() => setView("chat")} status={<HudStatus link={link} />} />
+        ) : view === "identity" ? (
+          <IdentityView onBack={() => setView("chat")} status={<HudStatus link={link} />} />
+        ) : view === "favorites" ? (
+          <FavoritesView onBack={() => setView("chat")} status={<HudStatus link={link} />} />
+        ) : view === "cards" ? (
+          <CardsView onBack={() => setView("chat")} status={<HudStatus link={link} />} />
+        ) : view === "week" ? (
+          <WeekView onBack={() => setView("chat")} status={<HudStatus link={link} />} />
         ) : view === "settings" ? (
           <SettingsView onBack={() => setView("chat")} status={<HudStatus link={link} />} />
         ) : view === "exam" || view === "review" ? (
@@ -468,10 +499,21 @@ export function NexoApp() {
             <div ref={scrollerRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
               {chatting && active ? (
                 <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-8 md:px-6">
-                  {active.messages.map((message, index) => (
+                  {active.messages.map((message, index) => {
+                    let question = "";
+                    if (message.role === "assistant") {
+                      for (let i = index - 1; i >= 0; i -= 1) {
+                        const prev = active.messages[i];
+                        if (prev?.role !== "user") continue;
+                        question = prev.content.trim() || prev.doc?.name || (prev.image || prev.hadImage ? "Foto" : "Pregunta");
+                        break;
+                      }
+                    }
+                    return (
                     <Message
                       key={message.id}
                       message={message}
+                      question={question}
                       speaking={speakingId === message.id}
                       onSpeak={voiceOut ? () => toggleSpeak(message) : undefined}
                       streaming={
@@ -479,7 +521,8 @@ export function NexoApp() {
                       }
                       phase={phase}
                     />
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <Empty
@@ -876,6 +919,7 @@ function Sidebar({
       </div>
 
       <div className="px-3">
+        <MenuIdentity onOpen={() => onOpen("identity")} />
         <button
           type="button"
           className="tap flex h-11 w-full items-center justify-center gap-2 rounded-md bg-paper text-sm font-medium text-ink"
@@ -927,6 +971,39 @@ function Sidebar({
         >
           <Settings className="size-4" strokeWidth={1.75} />
           Ajustes
+        </button>
+        <button
+          type="button"
+          aria-current={view === "favorites" ? "page" : undefined}
+          className={`tap mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm ${
+            view === "favorites" ? "border-neon/60 text-neon" : "border-line text-fg hover:bg-bg-soft"
+          }`}
+          onClick={() => onOpen("favorites")}
+        >
+          <Star className="size-4" strokeWidth={1.75} />
+          Favoritos
+        </button>
+        <button
+          type="button"
+          aria-current={view === "cards" ? "page" : undefined}
+          className={`tap mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm ${
+            view === "cards" ? "border-neon/60 text-neon" : "border-line text-fg hover:bg-bg-soft"
+          }`}
+          onClick={() => onOpen("cards")}
+        >
+          <Layers className="size-4" strokeWidth={1.75} />
+          Fichas
+        </button>
+        <button
+          type="button"
+          aria-current={view === "week" ? "page" : undefined}
+          className={`tap mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm ${
+            view === "week" ? "border-neon/60 text-neon" : "border-line text-fg hover:bg-bg-soft"
+          }`}
+          onClick={() => onOpen("week")}
+        >
+          <Flag className="size-4" strokeWidth={1.75} />
+          Desafío
         </button>
         <p className="px-1 pt-3 text-xs leading-relaxed text-faint">
           Las respuestas vienen de un modelo en línea. Esta lista solo vive en este navegador.
@@ -1147,17 +1224,20 @@ function hostOf(url: string) {
 
 function Message({
   message,
+  question,
   streaming,
   phase,
   speaking,
   onSpeak,
 }: {
   message: ChatMessage;
+  question?: string;
   streaming: boolean;
   phase: "idle" | "search" | "write";
   speaking: boolean;
   onSpeak?: () => void;
 }) {
+  const starred = useFavoritesStore((state) => state.items.some((item) => item.id === message.id));
   const [copied, setCopied] = useState(false);
 
   if (message.role === "user") {
@@ -1196,6 +1276,24 @@ function Message({
         </span>
         {message.content && !streaming ? (
           <span className="flex items-center">
+            <button
+              type="button"
+              aria-pressed={starred}
+              className={`tap hud-btn flex h-11 items-center gap-1.5 px-2 text-xs ${
+                starred ? "text-neon" : "text-faint"
+              }`}
+              onClick={() =>
+                useFavoritesStore.getState().toggle({
+                  id: message.id,
+                  q: question?.trim() || "Respuesta",
+                  a: message.content,
+                  at: Date.now(),
+                })
+              }
+            >
+              <Star className="size-3.5" strokeWidth={1.75} fill={starred ? "currentColor" : "none"} />
+              {starred ? "Guardada" : "Favorito"}
+            </button>
             {onSpeak ? (
               <button
                 type="button"

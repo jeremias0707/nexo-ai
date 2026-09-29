@@ -4,6 +4,7 @@ import {
   DEFAULT_SETTINGS,
   sanitizeSettings,
   type ExplainDepth,
+  type ReplyMode,
   type Settings,
   type TextSize,
   type ThemeId,
@@ -13,6 +14,7 @@ type SettingsState = Settings & {
   setTheme: (theme: ThemeId) => void;
   setText: (text: TextSize) => void;
   setExplain: (explain: ExplainDepth) => void;
+  setReply: (reply: ReplyMode) => void;
 };
 
 const storage: StateStorage = {
@@ -37,6 +39,7 @@ export const useSettingsStore = create<SettingsState>()(
       setTheme: (theme) => set({ theme }),
       setText: (text) => set({ text }),
       setExplain: (explain) => set({ explain }),
+      setReply: (reply) => set({ reply }),
     }),
     {
       name: "nexo-settings",
@@ -47,6 +50,7 @@ export const useSettingsStore = create<SettingsState>()(
         theme: state.theme,
         text: state.text,
         explain: state.explain,
+        reply: state.reply,
       }),
       merge: (persisted, current) => ({
         ...current,

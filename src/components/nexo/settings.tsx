@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { ChevronLeft, Settings } from "lucide-react";
+import { useProgressStore } from "@/lib/progress-store";
 import { useSettingsStore } from "@/lib/settings-store";
-import type { ExplainDepth, TextSize, ThemeId } from "@/lib/settings";
+import type { ExplainDepth, ReplyMode, TextSize, ThemeId } from "@/lib/settings";
 
 const THEME_OPTIONS: { id: ThemeId; label: string }[] = [
   { id: "oscuro", label: "Oscuro" },
@@ -20,10 +21,18 @@ const EXPLAIN_OPTIONS: { id: ExplainDepth; label: string }[] = [
   { id: "fondo", label: "A fondo" },
 ];
 
+const REPLY_OPTIONS: { id: ReplyMode; label: string }[] = [
+  { id: "normal", label: "Normal" },
+  { id: "pasos", label: "Pasos" },
+  { id: "preguntas", label: "Preguntas" },
+  { id: "examen", label: "Examen" },
+];
+
 export function SettingsView({ onBack, status }: { onBack: () => void; status: ReactNode }) {
   const theme = useSettingsStore((state) => state.theme);
   const text = useSettingsStore((state) => state.text);
   const explain = useSettingsStore((state) => state.explain);
+  const reply = useSettingsStore((state) => state.reply);
 
   return (
     <>
@@ -64,7 +73,10 @@ export function SettingsView({ onBack, status }: { onBack: () => void; status: R
             name="tema"
             value={theme}
             options={THEME_OPTIONS}
-            onChange={(id) => useSettingsStore.getState().setTheme(id)}
+            onChange={(id) => {
+              useSettingsStore.getState().setTheme(id);
+              if (id === "claro") useProgressStore.getState().record({ kind: "mark", mark: "claro" });
+            }}
           />
           <ChoiceGroup
             legend="Tamaño de letra"
@@ -81,6 +93,14 @@ export function SettingsView({ onBack, status }: { onBack: () => void; status: R
             value={explain}
             options={EXPLAIN_OPTIONS}
             onChange={(id) => useSettingsStore.getState().setExplain(id)}
+          />
+          <ChoiceGroup
+            legend="Modo de respuesta"
+            hint="Normal no cambia cómo responde. Pasos numera. Preguntas hace una pregunta antes de explicar. Examen corrige corto, como una prueba."
+            name="modo"
+            value={reply}
+            options={REPLY_OPTIONS}
+            onChange={(id) => useSettingsStore.getState().setReply(id)}
           />
           <p className="text-xs leading-relaxed text-faint">
             NEXO manda esta preferencia con cada pregunta del chat. No hace falta una cuenta y no se
@@ -114,7 +134,10 @@ function ChoiceGroup<T extends string>({
         role="radiogroup"
         aria-label={legend}
         className="grid gap-2"
-        style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+        style={{
+          gridTemplateColumns:
+            options.length > 3 ? "repeat(2, minmax(0, 1fr))" : `repeat(${options.length}, minmax(0, 1fr))`,
+        }}
       >
         {options.map((option) => {
           const on = option.id === value;

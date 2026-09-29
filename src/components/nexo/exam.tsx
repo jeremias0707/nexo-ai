@@ -49,6 +49,7 @@ import { useMistakeCount } from "@/lib/use-mistakes";
 import { prepareImage, type PreparedImage } from "@/lib/image-client";
 import { DAILY, dayKey } from "@/lib/progress";
 import { useProgressStore } from "@/lib/progress-store";
+import { useWeekStore } from "@/lib/local-store";
 
 type Stage = "config" | "loading" | "question" | "grading" | "result";
 
@@ -374,6 +375,7 @@ export function ExamView({
       });
       setEarned(result.earned);
       setCapped(result.earned === 0 && xp > 0);
+      useWeekStore.getState().note("exams");
     }
     setStage("result");
   }

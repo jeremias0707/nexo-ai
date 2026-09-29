@@ -51,6 +51,8 @@ export const XP = {
   photo: 15,
   pdf: 20,
   medal: 50,
+  /** Weekly challenge, once, on top of the medals it unlocks. */
+  challenge: 40,
 } as const;
 
 /** Anti-farming: rewarded actions per local day. */
@@ -306,6 +308,18 @@ export type Progress = {
     passed: number;
     perfect: number;
     subjects: string[];
+    /** Starred answers currently counted (can go down if you unstar). */
+    favorites: number;
+    /** Distinct fichas marked "la sabía". */
+    cards: number;
+    /** 1 once a profile photo is saved on the device. */
+    photo: number;
+    /** 1 once the nickname is not the default. */
+    nick: number;
+    /** 1 once the light theme was used. */
+    claro: number;
+    /** Weekly challenges finished. */
+    weeks: number;
   };
   /** Medal id → unlock time (ms). */
   medals: Record<string, number>;
@@ -329,6 +343,12 @@ export function emptyProgress(): Progress {
       passed: 0,
       perfect: 0,
       subjects: [],
+      favorites: 0,
+      cards: 0,
+      photo: 0,
+      nick: 0,
+      claro: 0,
+      weeks: 0,
     },
     medals: {},
     exams: [],
@@ -382,6 +402,12 @@ export function sanitizeProgress(value: unknown): Progress {
             ),
           ]
         : [],
+      favorites: num(stats.favorites),
+      cards: num(stats.cards),
+      photo: num(stats.photo) ? 1 : 0,
+      nick: num(stats.nick) ? 1 : 0,
+      claro: num(stats.claro) ? 1 : 0,
+      weeks: num(stats.weeks),
     },
     medals,
     exams: Array.isArray(raw.exams)
@@ -410,7 +436,12 @@ export type MedalIcon =
   | "graduation"
   | "trophy"
   | "message"
-  | "zap";
+  | "zap"
+  | "bookmark"
+  | "user"
+  | "sun"
+  | "layers"
+  | "flag";
 
 export type Medal = {
   id: string;
@@ -542,6 +573,78 @@ export const MEDALS: Medal[] = [
     target: 5,
     value: (p) => levelFor(p.xp).level,
   },
+  {
+    id: "primer-favorito",
+    name: "Primer favorito",
+    hint: "Marcá una respuesta con la estrella",
+    done: "Guardaste tu primera respuesta",
+    icon: "bookmark",
+    target: 1,
+    value: (p) => p.stats.favorites,
+  },
+  {
+    id: "favoritos-5",
+    name: "Colección",
+    hint: "Marcá 5 respuestas favoritas",
+    done: "Tenés 5 respuestas favoritas",
+    icon: "star",
+    target: 5,
+    value: (p) => p.stats.favorites,
+  },
+  {
+    id: "fichas-5",
+    name: "Memoria",
+    hint: "Marcá 5 fichas como «la sabía»",
+    done: "Supiste 5 fichas",
+    icon: "layers",
+    target: 5,
+    value: (p) => p.stats.cards,
+  },
+  {
+    id: "foto-perfil",
+    name: "Cara visible",
+    hint: "Poné una foto de perfil",
+    done: "Elegiste una foto de perfil",
+    icon: "user",
+    target: 1,
+    value: (p) => p.stats.photo,
+  },
+  {
+    id: "apodo",
+    name: "Apodo",
+    hint: "Poné un apodo que no sea «Vos»",
+    done: "Elegiste tu apodo",
+    icon: "message",
+    target: 1,
+    value: (p) => p.stats.nick,
+  },
+  {
+    id: "tema-claro",
+    name: "Día claro",
+    hint: "Probá el tema claro",
+    done: "Usaste el tema claro",
+    icon: "sun",
+    target: 1,
+    value: (p) => p.stats.claro,
+  },
+  {
+    id: "desafio-semana",
+    name: "Desafío semanal",
+    hint: "Terminá el desafío de la semana",
+    done: "Terminaste un desafío semanal",
+    icon: "flag",
+    target: 1,
+    value: (p) => p.stats.weeks,
+  },
+  {
+    id: "examenes-3",
+    name: "Tres exámenes",
+    hint: "Terminá 3 exámenes",
+    done: "Terminaste 3 exámenes",
+    icon: "book",
+    target: 3,
+    value: (p) => p.stats.exams,
+  },
 ];
 
 export function medalProgress(medal: Medal, progress: Progress) {
@@ -556,8 +659,11 @@ export function medalProgress(medal: Medal, progress: Progress) {
 
 // ---- Applying activity -----------------------------------------------------------
 
+export type LocalMark = "favorite" | "unfavorite" | "card" | "photo" | "nick" | "claro" | "week";
+
 export type Activity =
   | { kind: "question"; text: string; photo?: boolean; pdf?: boolean }
+  | { kind: "mark"; mark: LocalMark }
   | {
       kind: "exam";
       topic: string;
@@ -590,9 +696,16 @@ function isNight(date: Date) {
 export function applyActivity(previous: Progress, activity: Activity, now: Date): ActivityResult {
   const today = dayKey(now);
   const p: Progress = structuredClone(previous);
-  if (p.daily.day !== today)
-    p.daily = { day: today, questions: 0, photos: 0, pdfs: 0, exams: 0, xp: 0 };
-  p.streak = bumpStreak(p.streak, today);
+  const studies =
+    activity.kind === "question" ||
+    activity.kind === "exam" ||
+    (activity.kind === "mark" &&
+      (activity.mark === "favorite" || activity.mark === "card" || activity.mark === "week"));
+  if (studies) {
+    if (p.daily.day !== today)
+      p.daily = { day: today, questions: 0, photos: 0, pdfs: 0, exams: 0, xp: 0 };
+    p.streak = bumpStreak(p.streak, today);
+  }
   let earned = 0;
 
   if (activity.kind === "question") {
@@ -612,7 +725,7 @@ export function applyActivity(previous: Progress, activity: Activity, now: Date)
     if (isNight(now)) p.stats.night += 1;
     const found = detectSubjects(activity.text);
     p.stats.subjects = [...new Set([...p.stats.subjects, ...found])];
-  } else {
+  } else if (activity.kind === "exam") {
     p.stats.exams += 1;
     if (activity.nota >= 6) p.stats.passed += 1;
     if (activity.nota >= 10) p.stats.perfect += 1;
@@ -635,6 +748,17 @@ export function applyActivity(previous: Progress, activity: Activity, now: Date)
       },
       ...p.exams,
     ].slice(0, EXAM_HISTORY_MAX);
+  } else if (activity.kind === "mark") {
+    if (activity.mark === "favorite") p.stats.favorites += 1;
+    else if (activity.mark === "unfavorite") p.stats.favorites = Math.max(0, p.stats.favorites - 1);
+    else if (activity.mark === "card") p.stats.cards += 1;
+    else if (activity.mark === "photo") p.stats.photo = 1;
+    else if (activity.mark === "nick") p.stats.nick = 1;
+    else if (activity.mark === "claro") p.stats.claro = 1;
+    else if (activity.mark === "week") {
+      p.stats.weeks += 1;
+      earned += XP.challenge;
+    }
   }
 
   const levelBefore = levelFor(previous.xp).level;

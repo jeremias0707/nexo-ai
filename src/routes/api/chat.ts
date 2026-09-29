@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { parseChatBody } from "@/lib/chat-payload";
 import { tooManyRequests } from "@/lib/rate-limit.server";
-import { explainAddon } from "@/lib/settings";
+import { explainAddon, replyAddon } from "@/lib/settings";
 import { systemPrompt } from "@/lib/tutor.server";
 
 function clientIp(request: Request) {
@@ -60,7 +60,7 @@ export const Route = createFileRoute("/api/chat")({
               temperature: 0.4,
               tools: [{ type: "web_search" }],
               input: [
-                { role: "system", content: systemPrompt() + explainAddon(parsed.explain) },
+                { role: "system", content: systemPrompt() + explainAddon(parsed.explain) + replyAddon(parsed.reply) },
                 ...parsed.input,
               ],
             }),

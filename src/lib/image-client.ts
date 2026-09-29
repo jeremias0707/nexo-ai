@@ -14,6 +14,9 @@ export type PreparedImage = {
 
 export const THUMB_MAX_SIDE = 480;
 const THUMB_QUALITY = 0.65;
+export const AVATAR_MAX_SIDE = 256;
+const AVATAR_QUALITY = 0.72;
+const AVATAR_MAX_CHARS = 48_000;
 
 function loadImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -68,4 +71,26 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
   }
   const thumb = encode(img, THUMB_MAX_SIDE, THUMB_QUALITY);
   return { full, thumb };
+}
+
+/** Small JPEG for the profile photo. Never uploaded. */
+export async function prepareAvatar(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Ese archivo no es una imagen. Elegí una foto.");
+  }
+  if (file.size > IMAGE_MAX_FILE_BYTES) {
+    throw new Error("La foto es demasiado pesada (máximo 25 MB).");
+  }
+  let img: HTMLImageElement;
+  try {
+    img = await loadImage(file);
+  } catch {
+    throw new Error("No pude abrir esa imagen. Probá con una foto JPG o PNG.");
+  }
+  let url = encode(img, AVATAR_MAX_SIDE, AVATAR_QUALITY);
+  if (url.length > AVATAR_MAX_CHARS) url = encode(img, 160, 0.6);
+  if (url.length > AVATAR_MAX_CHARS) {
+    throw new Error("La foto quedó muy pesada. Probá con otra.");
+  }
+  return url;
 }

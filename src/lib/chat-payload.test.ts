@@ -13,6 +13,7 @@ describe("parseChatBody", () => {
       hasImage: false,
       document: null,
       explain: "normal",
+      reply: "normal",
       input: [{ role: "user", content: "hola" }],
     });
   });
@@ -100,5 +101,24 @@ describe("parseChatBody", () => {
     });
     assert.ok(junk.ok);
     assert.equal(junk.explain, "normal");
+    assert.equal(junk.reply, "normal");
+  });
+
+  it("accepts a reply mode without changing the messages", () => {
+    const parsed = parseChatBody({
+      messages: [{ role: "user", content: "resolvé" }],
+      reply: "pasos",
+      theme: "claro",
+      nick: "Jere",
+    });
+    assert.ok(parsed.ok);
+    assert.equal(parsed.reply, "pasos");
+    assert.deepEqual(parsed.input, [{ role: "user", content: "resolvé" }]);
+    const junk = parseChatBody({
+      messages: [{ role: "user", content: "x" }],
+      reply: "socratico",
+    });
+    assert.ok(junk.ok);
+    assert.equal(junk.reply, "normal");
   });
 });
