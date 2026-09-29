@@ -92,6 +92,8 @@ function speakMath(math: string) {
 /** Plain text for read-aloud: no markdown, links, code or LaTeX symbols. */
 export function speakableText(markdown: string) {
   return markdown
+    .replace(/```mermaid[\s\S]*?(```|$)/g, " (ver el diagrama en pantalla) ")
+    .replace(/```grafico[\s\S]*?(```|$)/g, " (ver el gráfico en pantalla) ")
     .replace(/```[\s\S]*?```/g, " (bloque de código) ")
     .replace(/\$\$([\s\S]+?)\$\$/g, (_, math: string) => speakMath(math))
     .replace(/\$([^$\n]+?)\$/g, (_, math: string) => speakMath(math))

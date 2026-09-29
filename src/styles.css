@@ -421,3 +421,22 @@
     transition: none;
   }
 }
+
+/* v6: diagrams (```mermaid) and charts (```grafico) */
+.diagram-card {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elev);
+  overflow: hidden;
+}
+
+.diagram-svg svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.mermaid-out svg {
+  font-family: var(--font-display);
+}

@@ -996,7 +996,7 @@ function Message({
       </div>
       <div className="assistant-rail border-l border-line pl-4">
         {message.content ? (
-          <Lesson content={message.content} />
+          <Lesson content={message.content} streaming={streaming} />
         ) : (
           <p className="flex h-7 items-center gap-2.5 font-mono text-xs tracking-widest text-muted uppercase">
             <span className="scan-bar" aria-hidden="true" />
