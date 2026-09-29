@@ -14,11 +14,13 @@ import {
   RotateCcw,
   Square,
   Target,
+  Settings,
   Trophy,
   Volume2,
   X,
 } from "lucide-react";
 import { ExamView } from "@/components/nexo/exam";
+import { SettingsView } from "@/components/nexo/settings";
 import { CelebrationOverlay, HudBar, ProfileView } from "@/components/nexo/progress-ui";
 import { useMistakeCount } from "@/lib/use-mistakes";
 import { useStreakLine } from "@/lib/use-progress";
@@ -31,6 +33,7 @@ import { DOC_ACCEPT, readDocument } from "@/lib/document-client";
 import { trimHistory } from "@/lib/history";
 import { prepareImage, type PreparedImage } from "@/lib/image-client";
 import { useProgressStore } from "@/lib/progress-store";
+import { useSettingsStore } from "@/lib/settings-store";
 import {
   appendDictation,
   canSpeak,
@@ -42,7 +45,7 @@ import {
 import { MISSIONS, pickMissions, type Mission } from "@/lib/missions";
 
 type LinkState = "checking" | "online" | "offline";
-type View = "chat" | "profile" | "exam" | "review";
+type View = "chat" | "profile" | "exam" | "review" | "settings";
 
 export function NexoApp() {
   const threads = useChatStore((state) => state.threads);
@@ -90,10 +93,20 @@ export function NexoApp() {
     };
   }, []);
 
+  const theme = useSettingsStore((state) => state.theme);
+  const textSize = useSettingsStore((state) => state.text);
+  const explain = useSettingsStore((state) => state.explain);
+
   useEffect(() => {
     void useChatStore.persist.rehydrate();
     void useProgressStore.persist.rehydrate();
+    void useSettingsStore.persist.rehydrate();
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.text = textSize;
+  }, [theme, textSize]);
 
   const active = threads.find((thread) => thread.id === activeId) ?? null;
   const chatting = Boolean(active && active.messages.length > 0);
@@ -275,6 +288,7 @@ export function NexoApp() {
         signal: controller.signal,
         body: JSON.stringify({
           messages: history,
+          explain,
           ...(activeDoc
             ? {
                 document: {
@@ -396,6 +410,8 @@ export function NexoApp() {
       <section className="hud-surface flex min-w-0 flex-1 flex-col">
         {view === "profile" ? (
           <ProfileView onBack={() => setView("chat")} status={<HudStatus link={link} />} />
+        ) : view === "settings" ? (
+          <SettingsView onBack={() => setView("chat")} status={<HudStatus link={link} />} />
         ) : view === "exam" || view === "review" ? (
           <ExamView
             onClose={() => setView("chat")}
@@ -899,6 +915,19 @@ function Sidebar({
           </button>
         </div>
         <ReviewMenuButton onOpen={() => onOpen("review")} />
+        <button
+          type="button"
+          aria-current={view === "settings" ? "page" : undefined}
+          className={`tap mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm ${
+            view === "settings"
+              ? "border-neon/60 text-neon"
+              : "border-line text-fg hover:bg-bg-soft"
+          }`}
+          onClick={() => onOpen("settings")}
+        >
+          <Settings className="size-4" strokeWidth={1.75} />
+          Ajustes
+        </button>
         <p className="px-1 pt-3 text-xs leading-relaxed text-faint">
           Las respuestas vienen de un modelo en línea. Esta lista solo vive en este navegador.
         </p>
@@ -1134,7 +1163,7 @@ function Message({
   if (message.role === "user") {
     return (
       <div className="msg-in flex justify-end">
-        <div className="flex max-w-[85%] flex-col items-end gap-2 rounded-md rounded-br-sm border border-neon/25 bg-neon/10 p-2 text-base leading-relaxed text-fg">
+        <div className="nexo-read flex max-w-[85%] flex-col items-end gap-2 rounded-md rounded-br-sm border border-neon/25 bg-neon/10 p-2 leading-relaxed text-fg">
           {message.image ? (
             <img
               src={message.image}

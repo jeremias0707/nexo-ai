@@ -12,6 +12,7 @@ describe("parseChatBody", () => {
       ok: true,
       hasImage: false,
       document: null,
+      explain: "normal",
       input: [{ role: "user", content: "hola" }],
     });
   });
@@ -75,5 +76,29 @@ describe("parseChatBody", () => {
   it("still requires the conversation to end on a user turn", () => {
     assert.equal(parseChatBody({ messages: [{ role: "assistant", content: "hola" }] }).ok, false);
     assert.equal(parseChatBody({}).ok, false);
+  });
+
+  it("accepts explain without changing the message shape", () => {
+    const simple = parseChatBody({
+      messages: [{ role: "user", content: "qué es una derivada" }],
+      explain: "simple",
+    });
+    assert.ok(simple.ok);
+    assert.equal(simple.explain, "simple");
+    assert.deepEqual(simple.input, [{ role: "user", content: "qué es una derivada" }]);
+
+    const deep = parseChatBody({
+      messages: [{ role: "user", content: "x" }],
+      explain: "fondo",
+    });
+    assert.ok(deep.ok);
+    assert.equal(deep.explain, "fondo");
+
+    const junk = parseChatBody({
+      messages: [{ role: "user", content: "x" }],
+      explain: "largo",
+    });
+    assert.ok(junk.ok);
+    assert.equal(junk.explain, "normal");
   });
 });

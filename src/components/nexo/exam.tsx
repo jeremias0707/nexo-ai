@@ -756,7 +756,7 @@ export function ExamView({
                     <p className="font-mono text-[10.5px] tracking-[0.16em] text-faint uppercase">
                       {question.kind === "mc" ? "Opción múltiple" : "Respuesta escrita"}
                     </p>
-                    <p className="mt-2.5 text-xl leading-snug font-medium text-pretty text-fg">
+                    <p className="nexo-exam-prompt mt-2.5 text-xl leading-snug font-medium text-pretty text-fg">
                       {question.prompt}
                     </p>
                   </div>
@@ -778,7 +778,7 @@ export function ExamView({
                       >
                         <span className="g-key">{LETTERS[i]}</span>
                         <span
-                          className={`text-base ${choice === i ? "text-fg" : "text-[#c9c9c6]"}`}
+                          className={`nexo-exam-body text-base ${choice === i ? "text-fg" : "text-muted"}`}
                         >
                           {option}
                         </span>
@@ -789,7 +789,7 @@ export function ExamView({
                   <div className="hud-frame mt-3">
                     <textarea
                       aria-label="Tu respuesta"
-                      className="dock block min-h-32 w-full resize-none rounded-md bg-transparent p-3 text-base text-fg outline-none placeholder:text-faint"
+                      className="nexo-exam-body dock block min-h-32 w-full resize-none rounded-md bg-transparent p-3 text-base text-fg outline-none placeholder:text-faint"
                       placeholder="Escribí tu respuesta en una o dos líneas…"
                       maxLength={1000}
                       value={written}
@@ -898,7 +898,7 @@ export function ExamView({
                       {String(i + 1).padStart(2, "0")}
                     </span>
                     <span
-                      className={`flex-1 text-[13.5px] leading-snug ${verdict === "correcta" ? "text-[#c9c9c6]" : "text-fg"}`}
+                      className={`nexo-exam-body flex-1 text-[13.5px] leading-snug ${verdict === "correcta" ? "text-muted" : "text-fg"}`}
                     >
                       {question.prompt}
                     </span>

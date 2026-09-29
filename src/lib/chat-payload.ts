@@ -1,6 +1,7 @@
 import { checkDocument, DOC_DEFAULT_PROMPT, documentContext, type DocPayload } from "./document.ts";
 import { MESSAGE_MAX_CHARS, trimHistory, type Turn } from "./history.ts";
 import { checkImageDataUrl, IMAGE_DEFAULT_PROMPT, IMAGE_EARLIER_NOTE } from "./image.ts";
+import { sanitizeExplain, type ExplainDepth } from "./settings.ts";
 
 // Cheap guard against absurd payloads; everything past it is trimmed, not rejected.
 const MAX_INCOMING_MESSAGES = 200;
@@ -11,14 +12,21 @@ export type InputPart =
 export type UpstreamTurn = Turn | { role: "user"; content: InputPart[] };
 
 export type ParsedChat =
-  | { ok: true; input: UpstreamTurn[]; hasImage: boolean; document: DocPayload | null }
+  | {
+      ok: true;
+      input: UpstreamTurn[];
+      hasImage: boolean;
+      document: DocPayload | null;
+      explain: ExplainDepth;
+    }
   | { ok: false; error: string };
 
 const INVALID = "La pregunta no tiene un formato válido.";
 
 /**
  * Parses the /api/chat body:
- *   { messages: [{ role, content, image?, hadImage?, newDocument? }], document? }
+ *   { messages: [{ role, content, image?, hadImage?, newDocument? }], document?, explain? }
+ * `explain` is optional ("simple" | "normal" | "fondo"). Anything else counts as "normal".
  * Only the latest user message may carry `image` (a data URL); any earlier turn
  * with a photo is forwarded as text plus IMAGE_EARLIER_NOTE, never re-sent.
  * `document` ({ name, kind, pages, totalPages, truncated, text }) is the
@@ -28,6 +36,7 @@ const INVALID = "La pregunta no tiene un formato válido.";
 export function parseChatBody(body: unknown): ParsedChat {
   if (!body || typeof body !== "object") return { ok: false, error: INVALID };
   const record = body as Record<string, unknown>;
+  const explain = sanitizeExplain(record.explain);
   if (!Array.isArray(record.messages) || record.messages.length === 0) {
     return { ok: false, error: INVALID };
   }
@@ -82,5 +91,5 @@ export function parseChatBody(body: unknown): ParsedChat {
     return { role: message.role, content: message.content };
   });
   if (document) input.unshift({ role: "user", content: documentContext(document) });
-  return { ok: true, input, hasImage, document };
+  return { ok: true, input, hasImage, document, explain };
 }

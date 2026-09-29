@@ -704,3 +704,70 @@
     transition: none;
   }
 }
+
+/* Ajustes: tema claro y tamaño del chat / examen. Oscuro sigue siendo el default. */
+html[data-theme="claro"] {
+  --color-bg: #f4f1ea;
+  --color-bg-elev: #fffcf7;
+  --color-bg-soft: #e7e2d8;
+  --color-fg: #161513;
+  --color-muted: #5c5852;
+  --color-faint: #7a756c;
+  --color-line: #1a18141f;
+  --color-line-strong: #1a181445;
+  --color-paper: #161513;
+  --color-ink: #f7f4ee;
+  --color-neon: #0c7c86;
+  color-scheme: light;
+}
+
+html[data-text="chico"] .lesson,
+html[data-text="chico"] .nexo-read {
+  font-size: 0.875rem;
+}
+html[data-text="grande"] .lesson,
+html[data-text="grande"] .nexo-read {
+  font-size: 1.1875rem;
+}
+html[data-text="chico"] .lesson h2 {
+  font-size: 1.35rem;
+}
+html[data-text="grande"] .lesson h2 {
+  font-size: 1.7rem;
+}
+html[data-text="chico"] .lesson h3 {
+  font-size: 0.95rem;
+}
+html[data-text="grande"] .lesson h3 {
+  font-size: 1.2rem;
+}
+html[data-text="chico"] .nexo-exam-prompt {
+  font-size: 1.0625rem;
+}
+html[data-text="grande"] .nexo-exam-prompt {
+  font-size: 1.5rem;
+}
+html[data-text="chico"] .nexo-exam-body {
+  font-size: 0.875rem;
+}
+html[data-text="grande"] .nexo-exam-body {
+  font-size: 1.125rem;
+}
+
+html[data-theme="claro"] .g-chip,
+html[data-theme="claro"] .g-opt,
+html[data-theme="claro"] .g-answer {
+  background: color-mix(in oklab, var(--color-bg-elev) 92%, var(--color-bg));
+  border-color: var(--color-line-strong);
+}
+html[data-theme="claro"] .g-btn.dim,
+html[data-theme="claro"] .g-answer .g-key,
+html[data-theme="claro"] .g-medal.off,
+html[data-theme="claro"] .g-lock {
+  border-color: var(--color-line-strong);
+  background: var(--color-bg-soft);
+}
+html[data-theme="claro"] .g-celebrate {
+  background: #f7fffe;
+  box-shadow: 0 16px 40px #1a181422;
+}

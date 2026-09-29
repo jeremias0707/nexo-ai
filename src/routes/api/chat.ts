@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { parseChatBody } from "@/lib/chat-payload";
 import { tooManyRequests } from "@/lib/rate-limit.server";
+import { explainAddon } from "@/lib/settings";
 import { systemPrompt } from "@/lib/tutor.server";
 
 function clientIp(request: Request) {
@@ -59,7 +60,7 @@ export const Route = createFileRoute("/api/chat")({
               temperature: 0.4,
               tools: [{ type: "web_search" }],
               input: [
-                { role: "system", content: systemPrompt() },
+                { role: "system", content: systemPrompt() + explainAddon(parsed.explain) },
                 ...parsed.input,
               ],
             }),
@@ -72,8 +73,7 @@ export const Route = createFileRoute("/api/chat")({
         }
 
         if (!upstream.ok || !upstream.body) {
-          const imageRejected =
-            parsed.hasImage && [400, 413, 415, 422].includes(upstream.status);
+          const imageRejected = parsed.hasImage && [400, 413, 415, 422].includes(upstream.status);
           return Response.json(
             {
               error:
@@ -141,10 +141,16 @@ export const Route = createFileRoute("/api/chat")({
                   if (json.type === "response.output_text.delta" && json.delta) {
                     send({ k: "delta", t: json.delta });
                   }
-                  if (json.type === "response.output_text.annotation.added" && json.annotation?.url) {
+                  if (
+                    json.type === "response.output_text.annotation.added" &&
+                    json.annotation?.url
+                  ) {
                     keep(cited, json.annotation.url);
                   }
-                  if (json.type === "response.output_item.done" && json.item?.type === "web_search_call") {
+                  if (
+                    json.type === "response.output_item.done" &&
+                    json.item?.type === "web_search_call"
+                  ) {
                     for (const source of json.item.action?.sources ?? []) {
                       if (source.url) keep(found, source.url);
                     }
