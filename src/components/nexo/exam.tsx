@@ -30,7 +30,6 @@ import {
   gradeChoice,
   LETTERS,
   passed,
-  reviewPrompt,
   type ExamAnswer,
   type ExamCount,
   type ExamDifficulty,
@@ -38,6 +37,15 @@ import {
   type ExamSource,
   type GradeResult,
 } from "@/lib/exam";
+import {
+  EMPTY_MISTAKES,
+  foldMistakes,
+  loadMistakes,
+  mistakeButtonLabel,
+  reviewPaper,
+  saveMistakes,
+} from "@/lib/mistakes";
+import { useMistakeCount } from "@/lib/use-mistakes";
 import { prepareImage, type PreparedImage } from "@/lib/image-client";
 import { DAILY, dayKey } from "@/lib/progress";
 import { useProgressStore } from "@/lib/progress-store";
@@ -84,16 +92,17 @@ async function postJson<T>(url: string, body: unknown, signal?: AbortSignal): Pr
 
 export function ExamView({
   onClose,
-  onReview,
   status,
   online,
   onStage,
+  boot = "config",
 }: {
   onStage?: (stage: string) => void;
   onClose: () => void;
-  onReview: (prompt: string) => void;
   status: ReactNode;
   online: boolean;
+  /** "review" opens the saved-mistakes exam immediately (menu / home). */
+  boot?: "config" | "review";
 }) {
   const [stage, setStage] = useState<Stage>("config");
   const [config, setConfig] = useState<Config>({
@@ -122,13 +131,18 @@ export function ExamView({
   const docRef = useRef<HTMLInputElement>(null);
   const photoRef = useRef<HTMLInputElement>(null);
   const recordedRef = useRef(false);
+  const [reviewing, setReviewing] = useState(false);
+  const mistakeCount = useMistakeCount();
   const examsToday = useProgressStore((state) =>
     state.progress.daily.day === dayKey(new Date()) ? state.progress.daily.exams : 0,
   );
 
   useEffect(() => {
     setShowTimer(localStorage.getItem(TIMER_KEY) !== "off");
+    if (boot === "review") beginReview();
     return () => abortRef.current?.abort();
+    // boot is only read on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -141,8 +155,10 @@ export function ExamView({
     return () => window.clearInterval(timer);
   }, [stage, startedAt]);
 
-  const title = config.topic.trim() || paper?.title || "Examen";
-  const subtitle = `${title} · ${difficultyLabel(config.difficulty)}`;
+  const title = reviewing ? "Repaso de errores" : config.topic.trim() || paper?.title || "Examen";
+  const subtitle = reviewing
+    ? "Tus preguntas guardadas"
+    : `${title} · ${difficultyLabel(config.difficulty)}`;
   const ready =
     online &&
     (config.source === "tema"
@@ -192,8 +208,30 @@ export function ExamView({
     if (source === "foto" && !photo) photoRef.current?.click();
   }
 
+  function beginReview() {
+    const next = reviewPaper(loadMistakes());
+    if (!next) return;
+    abortRef.current?.abort();
+    recordedRef.current = false;
+    setReviewing(true);
+    setPaper(next);
+    setAnswers([]);
+    setIndex(0);
+    setChoice(null);
+    setWritten("");
+    setError(null);
+    setOpen(null);
+    setEarned(0);
+    setCapped(false);
+    setStartedAt(Date.now());
+    setElapsed(0);
+    setConfirmExit(false);
+    setStage("question");
+  }
+
   async function start() {
     if (!ready) return;
+    setReviewing(false);
     setError(null);
     setStage("loading");
     const controller = new AbortController();
@@ -274,24 +312,31 @@ export function ExamView({
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const { results } = await postJson<{ results: GradeResult[] }>(
-        "/api/exam-grade",
-        {
-          topic: config.topic.trim() || paper.title,
-          items: pending.map(({ question, i }) => ({
-            prompt: question.prompt,
-            expected: question.kind === "written" ? question.expected : "",
-            answer: String(list[i].given),
-          })),
-        },
-        controller.signal,
-      );
       const graded = [...list];
-      pending.forEach(({ i }, n) => {
-        const result = results[n];
-        if (result)
-          graded[i] = { ...graded[i], verdict: result.verdict, feedback: result.feedback };
-      });
+      const topic = reviewing ? "Repaso de errores" : config.topic.trim() || paper.title;
+      for (let start = 0; start < pending.length; start += 15) {
+        const slice = pending.slice(start, start + 15);
+        const { results } = await postJson<{ results: GradeResult[] }>(
+          "/api/exam-grade",
+          {
+            topic,
+            items: slice.map(({ question, i }) => ({
+              prompt: question.prompt,
+              expected: question.kind === "written" ? question.expected : "",
+              answer: String(list[i].given),
+            })),
+          },
+          controller.signal,
+        );
+        if (!Array.isArray(results) || results.length !== slice.length) {
+          throw new Error("No pude corregir las respuestas escritas.");
+        }
+        slice.forEach(({ i }, n) => {
+          const result = results[n];
+          if (result)
+            graded[i] = { ...graded[i], verdict: result.verdict, feedback: result.feedback };
+        });
+      }
       finish(graded);
     } catch (err) {
       if (controller.signal.aborted) return;
@@ -308,21 +353,27 @@ export function ExamView({
     const nota = computeNota(paper.questions, list);
     const firstWrong = paper.questions.findIndex((_, i) => list[i]?.verdict !== "correcta");
     setOpen(firstWrong === -1 ? null : firstWrong);
+    saveMistakes(foldMistakes(loadMistakes(), paper.questions, list, Date.now()));
     if (!recordedRef.current) {
       recordedRef.current = true;
       const count = paper.questions.length;
+      const difficulty = reviewing ? "media" : config.difficulty;
+      const topic = reviewing ? "Repaso de errores" : config.topic.trim() || paper.title;
+      // A long review is still practice: XP matches at most a 15-question exam.
+      const xpCount = Math.min(count, 15);
+      const xp = examXp(nota, xpCount, difficulty);
       const result = useProgressStore.getState().record({
         kind: "exam",
-        topic: config.topic.trim() || paper.title,
+        topic,
         source: config.source,
-        difficulty: config.difficulty,
+        difficulty,
         count,
         correct: list.filter((a) => a.verdict === "correcta").length,
         nota,
-        xp: examXp(nota, count, config.difficulty),
+        xp,
       });
       setEarned(result.earned);
-      setCapped(result.earned === 0 && examXp(nota, count, config.difficulty) > 0);
+      setCapped(result.earned === 0 && xp > 0);
     }
     setStage("result");
   }
@@ -337,6 +388,7 @@ export function ExamView({
   }
 
   function newExam() {
+    setReviewing(false);
     setPaper(null);
     setAnswers([]);
     setError(null);
@@ -525,7 +577,8 @@ export function ExamView({
             <div className="g-card mt-5 bg-bg-elev/60 px-3.5 py-3 text-[13px] leading-normal text-muted">
               <span className="font-semibold text-fg">Cómo funciona:</span> NEXO arma las preguntas
               sobre tu tema, sin mostrar las respuestas. Al final ves tu nota, las correcciones y
-              una explicación corta de cada error.
+              una explicación corta de cada error. Si te equivocás, la pregunta queda en este
+              dispositivo para repasarla.
             </div>
             <div className="mt-[18px] flex items-center justify-between gap-2 font-mono text-[11.5px] text-muted">
               <span className="flex items-center gap-1.5">
@@ -580,15 +633,27 @@ export function ExamView({
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                className="g-btn primary w-full"
-                disabled={!ready}
-                onClick={() => void start()}
-              >
-                <Target className="size-4" strokeWidth={1.75} />
-                Iniciar examen
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="g-btn primary w-full"
+                  disabled={!ready}
+                  onClick={() => void start()}
+                >
+                  <Target className="size-4" strokeWidth={1.75} />
+                  Iniciar examen
+                </button>
+                {mistakeButtonLabel(mistakeCount) ? (
+                  <button
+                    type="button"
+                    className="g-btn ghost mt-2 w-full text-xs tracking-[0.08em]"
+                    onClick={beginReview}
+                  >
+                    <RotateCcw className="size-[13px]" strokeWidth={2} />
+                    {mistakeButtonLabel(mistakeCount)}
+                  </button>
+                ) : null}
+              </>
             )}
           </div>
         </div>
@@ -606,7 +671,7 @@ export function ExamView({
     return (
       <>
         {header(
-          "Examen",
+          reviewing ? "Repaso" : "Examen",
           subtitle,
           <button
             type="button"
@@ -898,23 +963,39 @@ export function ExamView({
         </div>
       </div>
       <div className="shrink-0 border-t border-white/[0.08] bg-bg px-4 pt-2.5 pb-[18px]">
-        <div className="mx-auto grid max-w-2xl grid-cols-2 gap-2">
-          <button
-            type="button"
-            className="g-btn ghost text-xs tracking-[0.08em] whitespace-nowrap"
-            onClick={() => onReview(reviewPrompt(paper, answers, config.topic))}
-          >
-            <RotateCcw className="size-[13px]" strokeWidth={2} />
-            {toReview > 0 ? "Repasar errores" : "Repasar tema"}
-          </button>
-          <button
-            type="button"
-            className="g-btn primary text-xs tracking-[0.08em] whitespace-nowrap"
-            onClick={newExam}
-          >
-            <Target className="size-[13px]" strokeWidth={2} />
-            Nuevo examen
-          </button>
+        <div className="mx-auto max-w-2xl">
+          {mistakeButtonLabel(mistakeCount) ? (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                className="g-btn ghost text-xs tracking-[0.06em]"
+                onClick={beginReview}
+              >
+                <RotateCcw className="size-[13px]" strokeWidth={2} />
+                {mistakeButtonLabel(mistakeCount)}
+              </button>
+              <button
+                type="button"
+                className="g-btn primary text-xs tracking-[0.08em] whitespace-nowrap"
+                onClick={newExam}
+              >
+                <Target className="size-[13px]" strokeWidth={2} />
+                Nuevo examen
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="mb-2 text-center text-xs text-faint">{EMPTY_MISTAKES}</p>
+              <button
+                type="button"
+                className="g-btn primary w-full text-xs tracking-[0.08em]"
+                onClick={newExam}
+              >
+                <Target className="size-[13px]" strokeWidth={2} />
+                Nuevo examen
+              </button>
+            </>
+          )}
         </div>
       </div>
     </>

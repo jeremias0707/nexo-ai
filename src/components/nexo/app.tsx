@@ -11,6 +11,7 @@ import {
   Paperclip,
   Plus,
   Shuffle,
+  RotateCcw,
   Square,
   Target,
   Trophy,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { ExamView } from "@/components/nexo/exam";
 import { CelebrationOverlay, HudBar, ProfileView } from "@/components/nexo/progress-ui";
+import { useMistakeCount } from "@/lib/use-mistakes";
 import { useStreakLine } from "@/lib/use-progress";
 import { Lesson } from "@/components/nexo/lesson";
 import { Donate } from "@/components/nexo/donate";
@@ -40,7 +42,7 @@ import {
 import { MISSIONS, pickMissions, type Mission } from "@/lib/missions";
 
 type LinkState = "checking" | "online" | "offline";
-type View = "chat" | "profile" | "exam";
+type View = "chat" | "profile" | "exam" | "review";
 
 export function NexoApp() {
   const threads = useChatStore((state) => state.threads);
@@ -375,13 +377,6 @@ export function NexoApp() {
     setView(next);
   }
 
-  function review(prompt: string) {
-    useChatStore.getState().openFresh();
-    setError(null);
-    setView("chat");
-    void send(prompt);
-  }
-
   return (
     <div className="flex h-dvh bg-bg text-fg">
       <aside className="hidden w-64 shrink-0 border-r border-line md:flex">
@@ -401,11 +396,11 @@ export function NexoApp() {
       <section className="hud-surface flex min-w-0 flex-1 flex-col">
         {view === "profile" ? (
           <ProfileView onBack={() => setView("chat")} status={<HudStatus link={link} />} />
-        ) : view === "exam" ? (
+        ) : view === "exam" || view === "review" ? (
           <ExamView
             onClose={() => setView("chat")}
-            onReview={review}
             onStage={setExamStage}
+            boot={view === "review" ? "review" : "config"}
             status={<HudStatus link={link} />}
             online={link === "online"}
           />
@@ -474,6 +469,7 @@ export function NexoApp() {
                 <Empty
                   onPick={(prompt) => void send(prompt)}
                   onExam={link === "online" ? () => setView("exam") : undefined}
+                  onReview={() => setView("review")}
                 />
               )}
             </div>
@@ -723,7 +719,12 @@ export function NexoApp() {
         )}
       </section>
       <CelebrationOverlay
-        paused={busy || (view === "exam" && examStage !== "result" && examStage !== "config")}
+        paused={
+          busy ||
+          ((view === "exam" || view === "review") &&
+            examStage !== "result" &&
+            examStage !== "config")
+        }
         onProfile={() => openView("profile")}
       />
     </div>
@@ -897,6 +898,7 @@ function Sidebar({
             Tu perfil
           </button>
         </div>
+        <ReviewMenuButton onOpen={() => onOpen("review")} />
         <p className="px-1 pt-3 text-xs leading-relaxed text-faint">
           Las respuestas vienen de un modelo en línea. Esta lista solo vive en este navegador.
         </p>
@@ -945,9 +947,33 @@ function Sidebar({
   );
 }
 
-function Empty({ onPick, onExam }: { onPick: (prompt: string) => void; onExam?: () => void }) {
+function ReviewMenuButton({ onOpen }: { onOpen: () => void }) {
+  const count = useMistakeCount();
+  if (count <= 0) return null;
+  return (
+    <button
+      type="button"
+      className="tap mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-md border border-neon/50 text-sm text-neon"
+      onClick={onOpen}
+    >
+      <RotateCcw className="size-4" strokeWidth={1.75} />
+      Repasar errores ({count})
+    </button>
+  );
+}
+
+function Empty({
+  onPick,
+  onExam,
+  onReview,
+}: {
+  onPick: (prompt: string) => void;
+  onExam?: () => void;
+  onReview: () => void;
+}) {
   const streakLine = useStreakLine();
   const missions = useMissions();
+  const mistakeCount = useMistakeCount();
   return (
     <div className="mx-auto flex min-h-full max-w-lg flex-col justify-center px-5 py-10">
       <div className="rise flex items-center gap-4">
@@ -1002,6 +1028,19 @@ function Empty({ onPick, onExam }: { onPick: (prompt: string) => void; onExam?: 
           <span className="flex-1">Modo examen</span>
           <span className="font-mono text-[11px] tracking-wider text-neon uppercase">
             Hasta +150 XP
+          </span>
+        </button>
+      ) : null}
+      {mistakeCount > 0 ? (
+        <button
+          type="button"
+          onClick={onReview}
+          className="rise rise-3 tap chip mt-2 flex h-12 w-full items-center gap-2.5 rounded-sm border border-neon/40 bg-neon/5 px-3 text-left text-sm text-fg"
+        >
+          <RotateCcw className="size-4 text-neon" strokeWidth={1.75} />
+          <span className="flex-1">Repasar errores ({mistakeCount})</span>
+          <span className="font-mono text-[11px] tracking-wider text-neon uppercase">
+            En este celu
           </span>
         </button>
       ) : null}
