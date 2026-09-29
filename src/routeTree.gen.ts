@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DiagramaRouteImport } from './routes/diagrama'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as ApiExamRouteImport } from './routes/api/exam'
+import { Route as ApiExamGradeRouteImport } from './routes/api/exam-grade'
 import { Route as ApiStatusRouteImport } from './routes/api/status'
 
 const IndexRoute = IndexRouteImport.update({
@@ -29,6 +31,16 @@ const ApiChatRoute = ApiChatRouteImport.update({
   path: '/api/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiExamRoute = ApiExamRouteImport.update({
+  id: '/api/exam',
+  path: '/api/exam',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiExamGradeRoute = ApiExamGradeRouteImport.update({
+  id: '/api/exam-grade',
+  path: '/api/exam-grade',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiStatusRoute = ApiStatusRouteImport.update({
   id: '/api/status',
   path: '/api/status',
@@ -39,12 +51,16 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/diagrama': typeof DiagramaRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/exam': typeof ApiExamRoute
+  '/api/exam-grade': typeof ApiExamGradeRoute
   '/api/status': typeof ApiStatusRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/diagrama': typeof DiagramaRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/exam': typeof ApiExamRoute
+  '/api/exam-grade': typeof ApiExamGradeRoute
   '/api/status': typeof ApiStatusRoute
 }
 export interface FileRoutesById {
@@ -52,20 +68,43 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/diagrama': typeof DiagramaRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/exam': typeof ApiExamRoute
+  '/api/exam-grade': typeof ApiExamGradeRoute
   '/api/status': typeof ApiStatusRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/diagrama' | '/api/chat' | '/api/status'
+  fullPaths:
+    | '/'
+    | '/diagrama'
+    | '/api/chat'
+    | '/api/exam'
+    | '/api/exam-grade'
+    | '/api/status'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/diagrama' | '/api/chat' | '/api/status'
-  id: '__root__' | '/' | '/diagrama' | '/api/chat' | '/api/status'
+  to:
+    | '/'
+    | '/diagrama'
+    | '/api/chat'
+    | '/api/exam'
+    | '/api/exam-grade'
+    | '/api/status'
+  id:
+    | '__root__'
+    | '/'
+    | '/diagrama'
+    | '/api/chat'
+    | '/api/exam'
+    | '/api/exam-grade'
+    | '/api/status'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DiagramaRoute: typeof DiagramaRoute
   ApiChatRoute: typeof ApiChatRoute
+  ApiExamRoute: typeof ApiExamRoute
+  ApiExamGradeRoute: typeof ApiExamGradeRoute
   ApiStatusRoute: typeof ApiStatusRoute
 }
 
@@ -92,6 +131,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/exam': {
+      id: '/api/exam'
+      path: '/api/exam'
+      fullPath: '/api/exam'
+      preLoaderRoute: typeof ApiExamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/exam-grade': {
+      id: '/api/exam-grade'
+      path: '/api/exam-grade'
+      fullPath: '/api/exam-grade'
+      preLoaderRoute: typeof ApiExamGradeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/status': {
       id: '/api/status'
       path: '/api/status'
@@ -106,6 +159,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DiagramaRoute: DiagramaRoute,
   ApiChatRoute: ApiChatRoute,
+  ApiExamRoute: ApiExamRoute,
+  ApiExamGradeRoute: ApiExamGradeRoute,
   ApiStatusRoute: ApiStatusRoute,
 }
 export const routeTree = rootRouteImport

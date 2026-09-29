@@ -5,7 +5,7 @@ export const Route = createFileRoute("/api/status")({
     handlers: {
       GET: async () =>
         Response.json(
-          { online: Boolean(process.env.XAI_API_KEY), vision: true, docs: true, diagrams: true },
+          { online: Boolean(process.env.XAI_API_KEY), vision: true, docs: true, diagrams: true, exam: true },
           { headers: { "Cache-Control": "no-store" } },
         ),
     },

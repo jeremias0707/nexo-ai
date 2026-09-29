@@ -440,3 +440,267 @@
 .mermaid-out svg {
   font-family: var(--font-display);
 }
+
+/* ---- Progress (streak / XP / medals) and exam mode ----------------------- */
+@layer components {
+  .g-hudbar {
+    padding: 10px 14px 12px;
+    border-bottom: 1px solid var(--color-line);
+    background: linear-gradient(180deg, #3ee6f00d, transparent);
+  }
+  .g-card {
+    border: 1px solid var(--color-line);
+    border-radius: 14px;
+    background: var(--color-bg-elev);
+  }
+  .g-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid #ffffff24;
+    border-radius: 6px;
+    font: 500 12px/1 var(--font-mono);
+    color: var(--color-fg);
+    background: #0e0e0ecc;
+    white-space: nowrap;
+  }
+  .g-chip.flame {
+    border-color: #f0b43e66;
+    color: #f7d38a;
+    background: #f0b43e12;
+  }
+  .g-chip.cold {
+    color: var(--color-muted);
+  }
+  .g-chip.level {
+    border-color: #3ee6f066;
+    color: var(--color-neon);
+    background: #3ee6f010;
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .g-xp {
+    position: relative;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--color-bg-soft);
+    border: 1px solid var(--color-line);
+    overflow: hidden;
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent 0 calc(10% - 1px),
+      var(--color-bg) calc(10% - 1px) 10%
+    );
+  }
+  .g-xp > i {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: linear-gradient(90deg, #3ee6f0aa, var(--color-neon));
+    box-shadow: 0 0 10px var(--color-neon);
+    mask: repeating-linear-gradient(90deg, #000 0 calc(10% - 2px), transparent calc(10% - 2px) 10%);
+    transition: width 600ms ease-out;
+  }
+  .g-xp > i.gain {
+    background: var(--color-fg);
+    box-shadow: 0 0 10px var(--color-fg);
+  }
+  .g-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 48px;
+    border-radius: 8px;
+    font: 600 14px/1 var(--font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    transition:
+      scale 150ms ease-out,
+      opacity 200ms ease;
+  }
+  .g-btn:active:not(:disabled) {
+    scale: 0.97;
+  }
+  .g-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .g-btn.primary {
+    background: var(--color-neon);
+    color: var(--color-bg);
+    box-shadow: 0 0 18px #3ee6f055;
+  }
+  .g-btn.ghost {
+    border: 1px solid #3ee6f099;
+    color: var(--color-neon);
+  }
+  .g-btn.dim {
+    border: 1px solid #ffffff24;
+    color: var(--color-fg);
+  }
+  .g-label {
+    font: 500 11px/1 var(--font-mono);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-faint);
+    margin: 0 0 8px;
+  }
+  .g-opt {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 44px;
+    border: 1px solid var(--color-line);
+    border-radius: 6px;
+    background: #0e0e0eb3;
+    color: var(--color-muted);
+    font-size: 14px;
+    transition:
+      border-color 200ms ease,
+      color 200ms ease,
+      background-color 200ms ease;
+  }
+  .g-opt:hover {
+    border-color: #3ee6f055;
+  }
+  .g-opt[aria-pressed="true"],
+  .g-opt[aria-checked="true"] {
+    border-color: var(--color-neon);
+    color: var(--color-neon);
+    background: #3ee6f014;
+    box-shadow:
+      inset 0 0 0 1px #3ee6f055,
+      0 0 12px #3ee6f022;
+  }
+  .g-answer {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    min-height: 58px;
+    text-align: left;
+    background: #0e0e0eb3;
+    transition:
+      border-color 200ms ease,
+      background-color 200ms ease;
+  }
+  .g-answer .g-key {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 5px;
+    font: 600 13px/1 var(--font-display);
+    border: 1px solid #ffffff33;
+    color: var(--color-muted);
+  }
+  .g-answer[aria-checked="true"] {
+    border-color: var(--color-neon);
+    background: #3ee6f012;
+    box-shadow:
+      inset 0 0 0 1px #3ee6f055,
+      0 0 16px #3ee6f022;
+  }
+  .g-answer[aria-checked="true"] .g-key {
+    background: var(--color-neon);
+    border-color: var(--color-neon);
+    color: var(--color-bg);
+  }
+  .g-medal {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    position: relative;
+  }
+  .g-medal.on {
+    border: 1px solid var(--color-neon);
+    color: var(--color-neon);
+    background: radial-gradient(circle, #3ee6f02a, transparent 70%);
+    box-shadow: 0 0 16px #3ee6f055;
+  }
+  .g-medal.off {
+    border: 1px dashed #ffffff33;
+    color: var(--color-faint);
+    background: #121212;
+  }
+  .g-lock {
+    position: absolute;
+    right: -4px;
+    bottom: -4px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: #1c1c1c;
+    border: 1px solid #ffffff33;
+    color: var(--color-muted);
+  }
+  .g-celebrate {
+    position: relative;
+    overflow: hidden;
+    padding: 22px 18px 18px;
+    text-align: center;
+    border-color: #3ee6f080;
+    background: #08110f;
+    box-shadow:
+      0 0 0 1px #3ee6f022,
+      0 0 40px #3ee6f033,
+      0 20px 60px #000c;
+    animation: g-pop 360ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  }
+  .g-celebrate::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px);
+    pointer-events: none;
+  }
+  .g-medal-big {
+    margin: 16px auto 12px;
+    width: 84px;
+    height: 84px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 1px solid var(--color-neon);
+    color: var(--color-neon);
+    background: radial-gradient(circle, #3ee6f030, #08110f 70%);
+    box-shadow:
+      0 0 24px #3ee6f066,
+      inset 0 0 18px #3ee6f033;
+  }
+  .g-fade {
+    animation: g-fade 240ms ease-out both;
+  }
+}
+
+@keyframes g-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.94);
+  }
+}
+@keyframes g-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .g-celebrate,
+  .g-fade {
+    animation: none;
+  }
+  .g-xp > i {
+    transition: none;
+  }
+}

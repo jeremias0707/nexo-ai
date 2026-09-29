@@ -1,5 +1,5 @@
 /**
- * Sliding-window rate limit for /api/chat: MAX_HITS accepted requests per
+ * Sliding-window rate limit for /api/chat and /api/exam*: MAX_HITS accepted requests per
  * WINDOW_MS per client.
  *
  * Durable path: when a real Postgres (Neon, via DATABASE_URL) is configured,
@@ -22,10 +22,10 @@ const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
 
 const memoryHits = new Map<string, number[]>();
 
-function tooManyInMemory(key: string, now = Date.now()) {
+function tooManyInMemory(key: string, weight = 1, now = Date.now()) {
   const recent = (memoryHits.get(key) ?? []).filter((stamp) => now - stamp < WINDOW_MS);
-  const limited = recent.length >= MAX_HITS;
-  if (!limited) recent.push(now);
+  const limited = recent.length + weight > MAX_HITS;
+  if (!limited) for (let i = 0; i < weight; i += 1) recent.push(now);
   memoryHits.set(key, recent);
   // Keep the map bounded on long-lived instances.
   if (memoryHits.size > 5_000) {
@@ -46,7 +46,7 @@ async function hashKey(ip: string) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function tooManyInDb(ip: string) {
+async function tooManyInDb(ip: string, weight = 1) {
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
   const key = await hashKey(ip);
@@ -59,11 +59,12 @@ async function tooManyInDb(ip: string) {
        where client_key = $1 and hit_at > now() - make_interval(secs => $2)
      ), ins as (
        insert into chat_rate_hits (client_key)
-       select $1 where (select n from recent) < $3
+       select $1 from generate_series(1, $4::int)
+       where (select n from recent) + $4::int <= $3
        returning 1
      )
      select (select n from recent) as recent`,
-    [key, seconds, MAX_HITS],
+    [key, seconds, MAX_HITS, weight],
   );
   calls += 1;
   if (calls % PRUNE_EVERY === 0) {
@@ -73,7 +74,7 @@ async function tooManyInDb(ip: string) {
       ])
       .catch(() => undefined);
   }
-  return Number(rows[0]?.recent ?? 0) >= MAX_HITS;
+  return Number(rows[0]?.recent ?? 0) + weight > MAX_HITS;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number) {
@@ -92,16 +93,20 @@ function withTimeout<T>(promise: Promise<T>, ms: number) {
   });
 }
 
-/** True when this client already used its quota for the current window. */
-export async function tooManyRequests(ip: string): Promise<boolean> {
-  if (!hasDatabaseUrl) return tooManyInMemory(ip);
+/**
+ * True when this client already used its quota for the current window.
+ * `weight` lets heavier requests (exam generation) count as several hits.
+ */
+export async function tooManyRequests(ip: string, weight = 1): Promise<boolean> {
+  const hits = Math.max(1, Math.min(MAX_HITS, Math.floor(weight)));
+  if (!hasDatabaseUrl) return tooManyInMemory(ip, hits);
   try {
-    return await withTimeout(tooManyInDb(ip), DB_TIMEOUT_MS);
+    return await withTimeout(tooManyInDb(ip, hits), DB_TIMEOUT_MS);
   } catch (error) {
     if (!warned) {
       warned = true;
       console.warn("[rate-limit] DB unavailable, using in-memory fallback:", error);
     }
-    return tooManyInMemory(ip);
+    return tooManyInMemory(ip, hits);
   }
 }
