@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { Lesson } from "@/components/nexo/lesson";
+import { Donate } from "@/components/nexo/donate";
 import { Mark } from "@/components/nexo/mark";
 import { useChatStore, type ChatMessage, type DocMeta } from "@/lib/chat-store";
 import { describeDoc, type DocPayload } from "@/lib/document";
@@ -822,6 +823,9 @@ function Sidebar({
           </ul>
         )}
       </div>
+      <div className="border-t border-line px-2 py-2">
+        <Donate />
+      </div>
     </div>
   );
 }
@@ -863,6 +867,9 @@ function Empty({ onPick }: { onPick: (prompt: string) => void }) {
           </li>
         ))}
       </ul>
+      <div className="rise rise-3 mt-6">
+        <Donate variant="empty" />
+      </div>
     </div>
   );
 }
