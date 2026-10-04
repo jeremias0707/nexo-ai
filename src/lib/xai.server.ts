@@ -1,11 +1,5 @@
 import { responseText } from "@/lib/exam";
 
-export function clientIp(request: Request) {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]?.trim() || "local";
-  return "local";
-}
-
 export class UpstreamError extends Error {
   constructor(readonly status: number) {
     super(`xAI responded ${status}`);

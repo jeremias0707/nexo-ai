@@ -1,10 +1,10 @@
--- Durable rate limiting for /api/chat (12 requests per minute per client).
+-- Durable rate limiting for /api/chat, /api/exam and /api/exam-grade.
 --
--- One row per accepted request, keyed by a SHA-256 hash of the client IP (the
--- raw IP is never stored). Rows older than a few minutes are pruned
--- opportunistically by src/lib/rate-limit.server.ts, so the table stays tiny.
--- Unowned by design: this app has no accounts and nothing reads it but the
--- server-side limiter.
+-- Rows are keyed by a SHA-256 hash of the client IP (the raw IP is never
+-- stored). The minute window and the rolling daily cap use different hashes
+-- in this same table. Rows older than two days are pruned by
+-- src/lib/rate-limit.server.ts. Unowned by design: this app has no accounts
+-- and nothing reads it but the server-side limiter.
 
 create table if not exists chat_rate_hits (
   id bigserial primary key,
