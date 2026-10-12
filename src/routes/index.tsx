@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { AccessGate } from "@/components/nexo/access-gate";
 import { NexoApp } from "@/components/nexo/app";
 
 export const Route = createFileRoute("/")({
@@ -6,5 +7,9 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  return <NexoApp />;
+  return (
+    <AccessGate>
+      <NexoApp />
+    </AccessGate>
+  );
 }

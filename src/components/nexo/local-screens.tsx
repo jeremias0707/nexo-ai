@@ -1,13 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  ChevronLeft,
-  Flag,
-  Layers,
-  RotateCcw,
-  Star,
-  User,
-} from "lucide-react";
-import { buildDeck } from "@/lib/cards";
+import { ChevronLeft, Flag, Layers, RotateCcw, Star, User } from "lucide-react";
+import { buildStudyDeck, type DeckFilter, type StudyCard } from "@/lib/cards";
 import { useCardsStore, useFavoritesStore, useProfileStore, useWeekStore } from "@/lib/local-store";
 import { loadMistakes, subscribeMistakes } from "@/lib/mistakes";
 import { prepareAvatar } from "@/lib/image-client";
@@ -16,8 +9,9 @@ import { levelFor, liveStreak, MEDALS } from "@/lib/progress";
 import { useProgressStore } from "@/lib/progress-store";
 import { missionFor, shareLines } from "@/lib/week";
 import { useToday } from "@/lib/use-progress";
+import { useChatCardsStore } from "@/lib/study-store";
 
-function ScreenHeader({
+export function ScreenHeader({
   title,
   onBack,
   status,
@@ -174,12 +168,16 @@ export function FavoritesView({ onBack, status }: { onBack: () => void; status: 
               <Star className="size-6" strokeWidth={1.5} />
             </span>
             <div>
-              <h1 className="font-display text-2xl leading-none font-semibold text-paper">Favoritos</h1>
+              <h1 className="font-display text-2xl leading-none font-semibold text-paper">
+                Favoritos
+              </h1>
               <p className="mt-1.5 text-sm text-muted">Respuestas que marcaste con la estrella.</p>
             </div>
           </div>
           {items.length === 0 ? (
-            <p className="text-sm text-faint">Todavía no marcaste ninguna. En el chat, tocá la estrella.</p>
+            <p className="text-sm text-faint">
+              Todavía no marcaste ninguna. En el chat, tocá la estrella.
+            </p>
           ) : (
             <ul className="flex flex-col gap-2">
               {items.map((item) => (
@@ -189,9 +187,7 @@ export function FavoritesView({ onBack, status }: { onBack: () => void; status: 
                   <button
                     type="button"
                     className="tap mt-2 text-xs text-muted hover:text-fg"
-                    onClick={() =>
-                      useFavoritesStore.getState().toggle({ ...item, at: item.at })
-                    }
+                    onClick={() => useFavoritesStore.getState().toggle({ ...item, at: item.at })}
                   >
                     Quitar
                   </button>
@@ -205,26 +201,59 @@ export function FavoritesView({ onBack, status }: { onBack: () => void; status: 
   );
 }
 
+const DECK_FILTERS: { id: DeckFilter; label: string }[] = [
+  { id: "todas", label: "Todas" },
+  { id: "chat", label: "Del chat" },
+  { id: "favorito", label: "Favoritos" },
+  { id: "error", label: "Errores" },
+];
+
+const FROM_LABEL: Record<StudyCard["from"], string> = {
+  chat: "del chat",
+  favorito: "favorito",
+  error: "error",
+};
+
 export function CardsView({ onBack, status }: { onBack: () => void; status: ReactNode }) {
   const favorites = useFavoritesStore((state) => state.items);
   const known = useCardsStore((state) => state.known);
+  const chatCards = useChatCardsStore((state) => state.cards);
   const [mistakes, setMistakes] = useState(() => loadMistakes());
+  const [filter, setFilter] = useState<DeckFilter>("todas");
+  // Order is fixed per session (unknown first) so marking a card does not reshuffle the deck.
+  const [sessionKnown, setSessionKnown] = useState<string[]>(known);
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
-  const deck = buildDeck(favorites, mistakes);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const deck = buildStudyDeck(chatCards, favorites, mistakes, sessionKnown, filter);
   const card = deck[index] ?? null;
+  const counts = {
+    todas: buildStudyDeck(chatCards, favorites, mistakes, [], "todas").length,
+    chat: chatCards.length,
+  };
 
   useEffect(() => subscribeMistakes(() => setMistakes(loadMistakes())), []);
   useEffect(() => {
     if (index >= deck.length) setIndex(0);
   }, [deck.length, index]);
 
+  function choose(next: DeckFilter) {
+    setFilter(next);
+    setSessionKnown(useCardsStore.getState().known);
+    setIndex(0);
+    setFlipped(false);
+    setConfirmDelete(false);
+  }
+
   function grade(knew: boolean) {
     if (!card) return;
     useCardsStore.getState().review(card.id, knew);
     setFlipped(false);
+    setConfirmDelete(false);
     setIndex((current) => (deck.length <= 1 ? 0 : (current + 1) % deck.length));
   }
+
+  const knownInDeck = deck.filter((c) => known.includes(c.id)).length;
 
   return (
     <>
@@ -236,22 +265,43 @@ export function CardsView({ onBack, status }: { onBack: () => void; status: Reac
               <Layers className="size-6" strokeWidth={1.5} />
             </span>
             <div>
-              <h1 className="font-display text-2xl leading-none font-semibold text-paper">Fichas</h1>
+              <h1 className="font-display text-2xl leading-none font-semibold text-paper">
+                Fichas
+              </h1>
               <p className="mt-1.5 text-sm text-muted">
-                Armadas con tus favoritos y los errores guardados. Sin pedir nada al modelo.
+                Del chat, de tus favoritos y de tus errores. Funcionan sin internet.
               </p>
             </div>
           </div>
+          {counts.todas > 0 ? (
+            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Qué fichas">
+              {DECK_FILTERS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={filter === item.id}
+                  onClick={() => choose(item.id)}
+                  className={`tap rounded-sm border px-2.5 py-1.5 text-xs ${
+                    filter === item.id ? "border-neon/60 text-neon" : "border-line text-muted"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {!card ? (
             <p className="text-sm text-faint">
-              Marcá una respuesta con la estrella, o guardá un error del examen, para tener fichas.
+              {filter === "chat"
+                ? "Todavía no hiciste fichas del chat. Debajo de una explicación tocá «Fichas»."
+                : "Para tener fichas: en el chat tocá «Fichas» debajo de una explicación, marcá una respuesta con la estrella o guardá un error del examen."}
             </p>
           ) : (
             <>
               <p className="font-mono text-xs tracking-wider text-faint uppercase">
-                {index + 1} / {deck.length}
+                {index + 1} / {deck.length} · {FROM_LABEL[card.from]}
                 {known.includes(card.id) ? " · la sabías" : ""}
-                {card.from === "error" ? " · error" : " · favorito"}
               </p>
               <button
                 type="button"
@@ -265,15 +315,53 @@ export function CardsView({ onBack, status }: { onBack: () => void; status: Reac
                 <p className="mt-3 text-base leading-relaxed text-fg">
                   {flipped ? card.back : card.front}
                 </p>
-                <p className="mt-4 text-xs text-faint">{flipped ? "Tocá para volver" : "Tocá para dar vuelta"}</p>
+                <p className="mt-4 text-xs text-faint">
+                  {flipped ? "Tocá para volver" : "Tocá para dar vuelta"}
+                </p>
               </button>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" className="tap g-btn ghost h-11 text-sm" onClick={() => grade(true)}>
+                <button
+                  type="button"
+                  className="tap g-btn ghost h-11 text-sm"
+                  onClick={() => grade(true)}
+                >
                   La sabía
                 </button>
-                <button type="button" className="tap g-btn dim h-11 text-sm" onClick={() => grade(false)}>
+                <button
+                  type="button"
+                  className="tap g-btn dim h-11 text-sm"
+                  onClick={() => grade(false)}
+                >
                   No la sabía
                 </button>
+              </div>
+              <div className="flex items-center justify-between gap-2 text-xs text-faint">
+                <span>
+                  {knownInDeck} de {deck.length} sabidas
+                </span>
+                {card.from === "chat" ? (
+                  confirmDelete ? (
+                    <button
+                      type="button"
+                      className="tap rounded-sm px-2 py-1 text-accent-r"
+                      onClick={() => {
+                        useChatCardsStore.getState().remove(card.id);
+                        setConfirmDelete(false);
+                        setFlipped(false);
+                      }}
+                    >
+                      Sí, borrar esta ficha
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="tap rounded-sm px-2 py-1 hover:text-fg"
+                      onClick={() => setConfirmDelete(true)}
+                    >
+                      Borrar ficha
+                    </button>
+                  )
+                ) : null}
               </div>
             </>
           )}
@@ -327,7 +415,8 @@ export function WeekView({ onBack, status }: { onBack: () => void; status: React
   const progress = useProgressStore((state) => state.progress);
   const today = useToday();
   const mission = missionFor(new Date());
-  const current = week.weekId === mission.weekId ? week : { weekId: mission.weekId, n: 0, done: false };
+  const current =
+    week.weekId === mission.weekId ? week : { weekId: mission.weekId, n: 0, done: false };
   const info = levelFor(progress.xp);
   const streak = liveStreak(progress.streak, today);
   const medal =
@@ -350,7 +439,9 @@ export function WeekView({ onBack, status }: { onBack: () => void; status: React
               <h1 className="font-display text-2xl leading-none font-semibold text-paper">
                 Desafío de la semana
               </h1>
-              <p className="mt-1.5 text-sm text-muted">De lunes a domingo. Se guarda en este navegador.</p>
+              <p className="mt-1.5 text-sm text-muted">
+                De lunes a domingo. Se guarda en este navegador.
+              </p>
             </div>
           </div>
           <div className="rounded-md border border-line bg-bg-elev/60 p-4">
@@ -372,7 +463,9 @@ export function WeekView({ onBack, status }: { onBack: () => void; status: React
                   levelName: info.name,
                   streak,
                   medal: medal ?? null,
-                  mission: current.done ? `Desafío: ${mission.title}` : `En curso: ${mission.title}`,
+                  mission: current.done
+                    ? `Desafío: ${mission.title}`
+                    : `En curso: ${mission.title}`,
                 }),
               )
             }

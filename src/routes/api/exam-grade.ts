@@ -6,6 +6,7 @@ import {
   parseGradeOutput,
   type GradeResult,
 } from "@/lib/exam";
+import { globalBudgetAllows, requireDeviceAccess } from "@/lib/access.server";
 import { runIfWithinQuota } from "@/lib/rate-limit.server";
 import { gradeSystemPrompt } from "@/lib/tutor.server";
 import { structuredCall, UpstreamError } from "@/lib/xai.server";
@@ -14,6 +15,9 @@ export const Route = createFileRoute("/api/exam-grade")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const access = await requireDeviceAccess(request);
+        if (!access.ok) return access.response;
+
         let payload: unknown;
         try {
           payload = await request.json();
@@ -23,11 +27,19 @@ export const Route = createFileRoute("/api/exam-grade")({
         const checked = checkGradeRequest(payload);
         if (!checked.ok) return Response.json({ error: checked.error }, { status: 400 });
 
+        if (!globalBudgetAllows("grade")) {
+          return Response.json(
+            { error: "NEXO alcanzó el tope general de hoy. Probá mañana." },
+            { status: 429 },
+          );
+        }
+
         return runIfWithinQuota(
           request,
           {
             bucket: "grade",
-            message: "Demasiados pedidos seguidos. Esperá un momento y reintentá.",
+            deviceKey: access.deviceKey,
+            message: "Llegaste al límite gratis de hoy. Mañana se renueva el cupo.",
           },
           async () => {
             const apiKey = process.env.XAI_API_KEY;

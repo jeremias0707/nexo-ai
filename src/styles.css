@@ -771,3 +771,11 @@ html[data-theme="claro"] .g-celebrate {
   background: #f7fffe;
   box-shadow: 0 16px 40px #1a181422;
 }
+
+/* 2.6: selector de fecha del plan con el calendario del tema. */
+.date-input {
+  color-scheme: dark;
+}
+html[data-theme="claro"] .date-input {
+  color-scheme: light;
+}

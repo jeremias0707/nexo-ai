@@ -3,14 +3,42 @@ import type { Favorite } from "./favorites.ts";
 import type { Mistake } from "./mistakes.ts";
 
 export const DECK_CAP = 40;
-export const KNOWN_CAP = 80;
+export const KNOWN_CAP = 250;
 
 export type StudyCard = {
   id: string;
   front: string;
   back: string;
-  from: "favorito" | "error";
+  from: "favorito" | "error" | "chat";
 };
+
+export type DeckFilter = "todas" | "chat" | "favorito" | "error";
+
+/**
+ * 2.6: chat cards + favorites + mistakes, optionally filtered. Cards not yet
+ * marked "la sabía" come first so practice starts with what is missing.
+ */
+export function buildStudyDeck(
+  chat: { id: string; front: string; back: string }[],
+  favorites: Favorite[],
+  mistakes: Mistake[],
+  known: string[],
+  filter: DeckFilter = "todas",
+): StudyCard[] {
+  const chatCards: StudyCard[] = chat.map((card) => ({
+    id: card.id,
+    front: clip(card.front, 280),
+    back: clip(card.back, 700),
+    from: "chat",
+  }));
+  const rest = buildDeck(favorites, mistakes);
+  const all = [...chatCards, ...rest].filter((card) => filter === "todas" || card.from === filter);
+  const knownSet = new Set(known);
+  return [
+    ...all.filter((card) => !knownSet.has(card.id)),
+    ...all.filter((card) => knownSet.has(card.id)),
+  ];
+}
 
 function clip(text: string, max: number) {
   const clean = text.replace(/\s+/g, " ").trim();
@@ -30,20 +58,19 @@ export function cardsFromFavorites(favorites: Favorite[]): StudyCard[] {
 }
 
 export function cardsFromMistakes(mistakes: Mistake[]): StudyCard[] {
-  return mistakes.map((mistake) => {
-    const q = mistake.question;
-    const answer =
-      q.kind === "mc"
-        ? q.options[q.answer] || ""
-        : q.expected;
-    const extra = q.explanation ? ` ${q.explanation}` : "";
-    return {
-      id: `err:${mistake.id}`,
-      front: clip(q.prompt, 280),
-      back: clip(`${answer}${extra}`, 700),
-      from: "error" as const,
-    };
-  }).filter((card) => card.front && card.back);
+  return mistakes
+    .map((mistake) => {
+      const q = mistake.question;
+      const answer = q.kind === "mc" ? q.options[q.answer] || "" : q.expected;
+      const extra = q.explanation ? ` ${q.explanation}` : "";
+      return {
+        id: `err:${mistake.id}`,
+        front: clip(q.prompt, 280),
+        back: clip(`${answer}${extra}`, 700),
+        from: "error" as const,
+      };
+    })
+    .filter((card) => card.front && card.back);
 }
 
 /** Favorites first, then mistakes. One card per id, capped. */

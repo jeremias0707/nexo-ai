@@ -14,6 +14,8 @@ describe("parseChatBody", () => {
       document: null,
       explain: "normal",
       reply: "normal",
+      subject: "",
+      mobile: false,
       input: [{ role: "user", content: "hola" }],
     });
   });
@@ -120,5 +122,16 @@ describe("parseChatBody", () => {
     });
     assert.ok(junk.ok);
     assert.equal(junk.reply, "normal");
+
+    const guided = parseChatBody({
+      messages: [{ role: "user", content: "x" }],
+      reply: "guiado",
+      subject: "mate",
+      mobile: true,
+    });
+    assert.ok(guided.ok);
+    assert.equal(guided.reply, "guiado");
+    assert.equal(guided.subject, "mate");
+    assert.equal(guided.mobile, true);
   });
 });

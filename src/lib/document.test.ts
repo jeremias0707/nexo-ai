@@ -79,7 +79,9 @@ describe("documents", () => {
 
   it("says when only some pages were read", () => {
     const text = documentContext({ ...doc, pages: 30, totalPages: 80, truncated: true });
-    assert.ok(text.includes("Solo se leyeron las páginas 1 a 30."));
+    assert.ok(text.includes("Solo se leyeron las páginas 1 a 30 de 80."));
+    assert.ok(text.includes("NO están disponibles"));
+    assert.ok(text.includes("(pág. N)"));
     assert.ok(text.includes("recortado"));
   });
 

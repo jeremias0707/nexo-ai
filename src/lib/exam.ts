@@ -56,6 +56,8 @@ export type ExamAnswer = {
   /** Undefined while a written answer is waiting for (or failed) grading. */
   verdict?: Verdict;
   feedback?: string;
+  /** Short improvement tip from the written-answer grader (2.6). */
+  tip?: string;
 };
 
 /** How many of the questions are short written answers (~30%). */
@@ -276,10 +278,22 @@ export const GRADE_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          verdict: { type: "string", enum: ["correcta", "parcial", "incorrecta"] },
-          feedback: { type: "string", description: "Devolución breve (1 o 2 oraciones)." },
+          verdict: {
+            type: "string",
+            enum: ["correcta", "parcial", "incorrecta"],
+            description:
+              "correcta = Bien, parcial = A medias, incorrecta = Mal (según la rúbrica).",
+          },
+          feedback: {
+            type: "string",
+            description: "Una oración: qué idea clave acertó y qué faltó o estuvo mal.",
+          },
+          tip: {
+            type: "string",
+            description: "Un consejo corto y accionable (máximo 15 palabras) para mejorar.",
+          },
         },
-        required: ["verdict", "feedback"],
+        required: ["verdict", "feedback", "tip"],
         additionalProperties: false,
       },
     },
@@ -426,7 +440,9 @@ export function gradeUserPrompt(items: GradeItem[], topic: string) {
   }. Devolvé un resultado por respuesta, en el mismo orden.\n\n${blocks.join("\n\n")}`;
 }
 
-export type GradeResult = { verdict: Verdict; feedback: string };
+export type GradeResult = { verdict: Verdict; feedback: string; tip?: string };
+
+export const TIP_MAX = 160;
 
 export function parseGradeOutput(text: string, expected: number): GradeResult[] | null {
   const data = looseJson(text) as { results?: unknown } | undefined;
@@ -435,7 +451,51 @@ export function parseGradeOutput(text: string, expected: number): GradeResult[] 
   for (const raw of data.results as Record<string, unknown>[]) {
     const verdict = raw?.verdict;
     if (verdict !== "correcta" && verdict !== "parcial" && verdict !== "incorrecta") return null;
-    results.push({ verdict, feedback: clean(raw.feedback, 400) });
+    const tip = clean(raw.tip, TIP_MAX).replace(/^tip\s*:\s*/i, "");
+    results.push({ verdict, feedback: clean(raw.feedback, 400), ...(tip ? { tip } : {}) });
   }
   return results;
+}
+
+// ---- Rubric (2.6): Bien / A medias / Mal ----------------------------------------
+
+export type RubricInfo = { label: string; short: string; color: string; points: number };
+
+export const RUBRIC: Record<Verdict, RubricInfo> = {
+  correcta: { label: "Bien", short: "Tiene las ideas clave.", color: "#3ecf8e", points: 1 },
+  parcial: {
+    label: "A medias",
+    short: "Tiene parte de la idea o le falta algo importante.",
+    color: "#f0b43e",
+    points: 0.5,
+  },
+  incorrecta: {
+    label: "Mal",
+    short: "No tiene la idea clave o el dato está mal.",
+    color: "#e85d4c",
+    points: 0,
+  },
+};
+
+export function rubricLabel(verdict: Verdict | undefined) {
+  return verdict ? RUBRIC[verdict].label : "Sin corregir";
+}
+
+/** "3 bien · 1 a medias · 2 mal". Unanswered/skipped count as mal. */
+export function rubricSummary(answers: (ExamAnswer | undefined)[], total: number) {
+  let bien = 0;
+  let medias = 0;
+  let mal = 0;
+  let pending = 0;
+  for (let i = 0; i < total; i += 1) {
+    const answer = answers[i];
+    const verdict = answer?.verdict;
+    if (verdict === "correcta") bien += 1;
+    else if (verdict === "parcial") medias += 1;
+    else if (verdict === "incorrecta" || !answer || answer.given === null) mal += 1;
+    else pending += 1;
+  }
+  const parts = [`${bien} bien`, `${medias} a medias`, `${mal} mal`];
+  if (pending) parts.push(`${pending} sin corregir`);
+  return { bien, medias, mal, pending, text: parts.join(" · ") };
 }

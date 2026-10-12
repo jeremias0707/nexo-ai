@@ -20,11 +20,30 @@ import {
   Volume2,
   Flag,
   Layers,
+  CalendarDays,
+  FileDown,
+  GitCompare,
+  Users,
   X,
 } from "lucide-react";
 import { ExamView } from "@/components/nexo/exam";
-import { CardsView, FavoritesView, IdentityView, MenuIdentity, WeekView } from "@/components/nexo/local-screens";
+import {
+  CardsView,
+  FavoritesView,
+  IdentityView,
+  MenuIdentity,
+  WeekView,
+} from "@/components/nexo/local-screens";
 import { SettingsView } from "@/components/nexo/settings";
+import { PlanView } from "@/components/nexo/plan";
+import { CompareView } from "@/components/nexo/compare";
+import { GroupView } from "@/components/nexo/group";
+import { ExportView } from "@/components/nexo/export-view";
+import { FlashcardSheet, GoalCard, OralChip, TodayCards } from "@/components/nexo/study-ui";
+import { cardsFromAnswer, CARDS_PROMPT, type DraftCard } from "@/lib/flashcards";
+import { isOralReply } from "@/lib/settings";
+import { rehydrateStudyStores, useGoalStore } from "@/lib/study-store";
+import { useStudyTimer } from "@/lib/use-study-timer";
 import { CelebrationOverlay, HudBar, ProfileView } from "@/components/nexo/progress-ui";
 import { useMistakeCount } from "@/lib/use-mistakes";
 import { useStreakLine } from "@/lib/use-progress";
@@ -48,10 +67,35 @@ import {
   speak,
   type Recognition,
 } from "@/lib/speech-client";
+import { deviceHeaders, clearDeviceToken } from "@/lib/access-client";
+import { FREE_CAPS } from "@/lib/access-constants";
+import { challengeForDay, isDailyDone, markDailyDone, type DailyChallenge } from "@/lib/daily";
 import { MISSIONS, pickMissions, type Mission } from "@/lib/missions";
+import {
+  SUBJECT_NONE,
+  SUBJECTS,
+  sanitizeSubject,
+  subjectLabel,
+  type SubjectChoice,
+} from "@/lib/subjects";
 
 type LinkState = "checking" | "online" | "offline";
-type View = "chat" | "profile" | "exam" | "review" | "settings" | "identity" | "favorites" | "cards" | "week";
+type View =
+  | "chat"
+  | "profile"
+  | "exam"
+  | "review"
+  | "settings"
+  | "identity"
+  | "favorites"
+  | "cards"
+  | "week"
+  | "plan"
+  | "compare"
+  | "group"
+  | "export";
+
+type CardsDraft = { drafts: DraftCard[]; source: string; content: string };
 
 export function NexoApp() {
   const threads = useChatStore((state) => state.threads);
@@ -81,6 +125,27 @@ export function NexoApp() {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [voiceOut, setVoiceOut] = useState(false);
   const stopSpeakRef = useRef<(() => void) | null>(null);
+  const [cardsDraft, setCardsDraft] = useState<CardsDraft | null>(null);
+  const [compareSeed, setCompareSeed] = useState<{ answer: string; doc: DocPayload | null }>({
+    answer: "",
+    doc: null,
+  });
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  function showToast(text: string) {
+    setToast(text);
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 3600);
+  }
+
+  // Racha y metas: local study minutes; a short toast when today's goal is reached.
+  useStudyTimer(busy, () => {
+    const streak = useGoalStore.getState().goal.streak.current;
+    showToast(
+      `¡Meta diaria cumplida! Racha de estudio: ${streak} ${streak === 1 ? "día" : "días"}.`,
+    );
+  });
 
   // Grow the box for dictated text too, not only for typing.
   useEffect(() => {
@@ -103,6 +168,35 @@ export function NexoApp() {
   const textSize = useSettingsStore((state) => state.text);
   const explain = useSettingsStore((state) => state.explain);
   const reply = useSettingsStore((state) => state.reply);
+  const [subject, setSubject] = useState<SubjectChoice>(SUBJECT_NONE);
+  const [mobile, setMobile] = useState(false);
+  const [daily, setDaily] = useState<DailyChallenge | null>(null);
+  const [dailyDone, setDailyDone] = useState(false);
+
+  useEffect(() => {
+    try {
+      setSubject(sanitizeSubject(localStorage.getItem("nexo-subject") ?? ""));
+    } catch {
+      setSubject(SUBJECT_NONE);
+    }
+    const mq = window.matchMedia("(max-width: 767px)");
+    const syncMobile = () => setMobile(mq.matches);
+    syncMobile();
+    mq.addEventListener("change", syncMobile);
+    const today = challengeForDay();
+    setDaily(today);
+    setDailyDone(isDailyDone(today.id));
+    // Mobile defaults to short answers (simple) only if the user never changed explain.
+    try {
+      if (mq.matches && !localStorage.getItem("nexo-explain-touched")) {
+        const current = useSettingsStore.getState().explain;
+        if (current === "normal") useSettingsStore.getState().setExplain("simple");
+      }
+    } catch {
+      // ignore
+    }
+    return () => mq.removeEventListener("change", syncMobile);
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -114,13 +208,15 @@ export function NexoApp() {
         useFavoritesStore.persist.rehydrate(),
         useCardsStore.persist.rehydrate(),
         useWeekStore.persist.rehydrate(),
+        rehydrateStudyStores(),
       ]);
       const settings = useSettingsStore.getState();
       if (settings.theme === "claro")
         useProgressStore.getState().record({ kind: "mark", mark: "claro" });
       const profile = useProfileStore.getState();
       if (profile.photo) useProgressStore.getState().record({ kind: "mark", mark: "photo" });
-      if (nickCounts(profile.nick)) useProgressStore.getState().record({ kind: "mark", mark: "nick" });
+      if (nickCounts(profile.nick))
+        useProgressStore.getState().record({ kind: "mark", mark: "nick" });
     })();
   }, []);
 
@@ -135,11 +231,16 @@ export function NexoApp() {
   const trimmed = active ? trimHistory(active.messages.filter(hasPayload)).dropped > 0 : false;
 
   useEffect(() => {
-    if (!stickRef.current) return;
     const node = scrollerRef.current;
     if (!node) return;
+    // The home screen is taller in 2.6 (goal, plan, class): start it at the top.
+    if (!chatting) {
+      node.scrollTop = 0;
+      return;
+    }
+    if (!stickRef.current) return;
     node.scrollTop = node.scrollHeight;
-  }, [active?.messages, busy]);
+  }, [active?.messages, busy, chatting]);
 
   function onScroll() {
     const node = scrollerRef.current;
@@ -305,12 +406,17 @@ export function NexoApp() {
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: deviceHeaders({ "Content-Type": "application/json" }),
         signal: controller.signal,
         body: JSON.stringify({
           messages: history,
           explain,
-          ...(reply !== "normal" ? { reply } : {}),
+          // Read at send time: plan/oral shortcuts switch the mode right before sending.
+          ...(useSettingsStore.getState().reply !== "normal"
+            ? { reply: useSettingsStore.getState().reply }
+            : {}),
+          ...(subject ? { subject } : {}),
+          ...(mobile ? { mobile: true } : {}),
           ...(activeDoc
             ? {
                 document: {
@@ -327,7 +433,13 @@ export function NexoApp() {
       });
 
       if (!response.ok || !response.body) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        const payload = (await response.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        if (response.status === 401 && payload?.code === "access_required") {
+          clearDeviceToken();
+        }
         throw new Error(payload?.error || "No pude completar la explicación.");
       }
 
@@ -409,23 +521,101 @@ export function NexoApp() {
     setView("chat");
   }
 
+  function continueTopic(title: string) {
+    const clean = title.replace(/\s+/g, " ").trim() || "este tema";
+    useChatStore.getState().openFresh();
+    setView("chat");
+    setDrawer(false);
+    void send(
+      `Seguimos con el tema «${clean}». Preguntame qué quiero repasar o explicame lo clave en pocas líneas.`,
+    );
+  }
+
   function openView(next: View) {
     setDrawer(false);
     setView(next);
   }
 
+  /** From a study screen: back to the chat and ask (1 free chat). */
+  function askFromTool(
+    prompt: string,
+    options: { oral?: boolean; fresh?: boolean; doc?: DocPayload } = {},
+  ) {
+    if (options.oral) useSettingsStore.getState().setReply("profe");
+    setDrawer(false);
+    setView("chat");
+    if (busy || preparing || readingDoc) {
+      // Never lose the prompt: leave it ready in the box.
+      setDraft(prompt);
+      return;
+    }
+    if (options.fresh) useChatStore.getState().openFresh();
+    void send(prompt, null, options.doc ?? null);
+  }
+
+  function activeDocPayload(): DocPayload | null {
+    const doc = active?.doc;
+    if (!doc?.text) return null;
+    return {
+      name: doc.name,
+      kind: doc.kind,
+      pages: doc.pages,
+      totalPages: doc.totalPages,
+      truncated: doc.truncated,
+      text: doc.text,
+    };
+  }
+
+  function lastAnswer() {
+    const list = active?.messages ?? [];
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const item = list[i];
+      if (item.role === "assistant" && item.content.trim()) return item.content;
+    }
+    return "";
+  }
+
+  function openCompare(answer: string) {
+    setCompareSeed({ answer, doc: activeDocPayload() });
+    openView("compare");
+  }
+
+  function startOral() {
+    useSettingsStore.getState().setReply("profe");
+    setDrawer(false);
+    setView("chat");
+    if (!active || active.messages.length > 0) useChatStore.getState().openFresh();
+    const topic = subject ? `${subjectLabel(subject)}: ` : "";
+    setDraft(`Tomame oral de ${topic}`);
+    window.setTimeout(() => {
+      const node = fieldRef.current;
+      if (!node) return;
+      node.focus();
+      node.setSelectionRange(node.value.length, node.value.length);
+    }, 60);
+  }
+
   return (
     <div className="flex h-dvh bg-bg text-fg">
       <aside className="hidden w-64 shrink-0 border-r border-line md:flex">
-        <Sidebar link={link} onFresh={fresh} onOpen={openView} view={view} />
+        <Sidebar
+          link={link}
+          onFresh={fresh}
+          onOpen={(next) => (next === "compare" ? openCompare(lastAnswer()) : openView(next))}
+          view={view}
+          onContinue={continueTopic}
+          onOral={startOral}
+        />
       </aside>
 
       <MobileDrawer open={drawer} onClose={() => setDrawer(false)}>
         <Sidebar
           link={link}
           onFresh={fresh}
-          onOpen={openView}
+          onOpen={(next) => (next === "compare" ? openCompare(lastAnswer()) : openView(next))}
           view={view}
+          onContinue={continueTopic}
+          onOral={startOral}
           onNavigate={() => setDrawer(false)}
         />
       </MobileDrawer>
@@ -443,6 +633,43 @@ export function NexoApp() {
           <WeekView onBack={() => setView("chat")} status={<HudStatus link={link} />} />
         ) : view === "settings" ? (
           <SettingsView onBack={() => setView("chat")} status={<HudStatus link={link} />} />
+        ) : view === "plan" ? (
+          <PlanView
+            onBack={() => setView("chat")}
+            status={<HudStatus link={link} />}
+            onAsk={(prompt, oral) => askFromTool(prompt, { oral, fresh: true })}
+            onOpen={openView}
+            lastAnswer={lastAnswer() || null}
+            online={link === "online"}
+          />
+        ) : view === "compare" ? (
+          <CompareView
+            onBack={() => setView("chat")}
+            status={<HudStatus link={link} />}
+            initialAnswer={compareSeed.answer}
+            threadDoc={compareSeed.doc}
+            online={link === "online"}
+            onAskAi={(prompt, doc) => {
+              const inThread =
+                active?.doc?.text && active.doc.text === doc.text && active.doc.name === doc.name;
+              askFromTool(prompt, inThread ? {} : { fresh: true, doc });
+            }}
+          />
+        ) : view === "group" ? (
+          <GroupView
+            onBack={() => setView("chat")}
+            status={<HudStatus link={link} />}
+            onAsk={(prompt) => askFromTool(prompt, { fresh: true })}
+            online={link === "online"}
+          />
+        ) : view === "export" ? (
+          <ExportView
+            onBack={() => setView("chat")}
+            status={<HudStatus link={link} />}
+            thread={active}
+            online={link === "online"}
+            onAsk={(prompt) => askFromTool(prompt)}
+          />
         ) : view === "exam" || view === "review" ? (
           <ExamView
             onClose={() => setView("chat")}
@@ -505,22 +732,35 @@ export function NexoApp() {
                       for (let i = index - 1; i >= 0; i -= 1) {
                         const prev = active.messages[i];
                         if (prev?.role !== "user") continue;
-                        question = prev.content.trim() || prev.doc?.name || (prev.image || prev.hadImage ? "Foto" : "Pregunta");
+                        question =
+                          prev.content.trim() ||
+                          prev.doc?.name ||
+                          (prev.image || prev.hadImage ? "Foto" : "Pregunta");
                         break;
                       }
                     }
                     return (
-                    <Message
-                      key={message.id}
-                      message={message}
-                      question={question}
-                      speaking={speakingId === message.id}
-                      onSpeak={voiceOut ? () => toggleSpeak(message) : undefined}
-                      streaming={
-                        busy && index === active.messages.length - 1 && message.role === "assistant"
-                      }
-                      phase={phase}
-                    />
+                      <Message
+                        key={message.id}
+                        message={message}
+                        question={question}
+                        speaking={speakingId === message.id}
+                        onSpeak={voiceOut ? () => toggleSpeak(message) : undefined}
+                        onCards={() =>
+                          setCardsDraft({
+                            drafts: cardsFromAnswer(message.content, question),
+                            source: question || active.title,
+                            content: message.content,
+                          })
+                        }
+                        onCompare={() => openCompare(message.content)}
+                        streaming={
+                          busy &&
+                          index === active.messages.length - 1 &&
+                          message.role === "assistant"
+                        }
+                        phase={phase}
+                      />
                     );
                   })}
                 </div>
@@ -529,6 +769,37 @@ export function NexoApp() {
                   onPick={(prompt) => void send(prompt)}
                   onExam={link === "online" ? () => setView("exam") : undefined}
                   onReview={() => setView("review")}
+                  onPlan={() => setView("plan")}
+                  onGroup={() => setView("group")}
+                  onSettings={() => setView("settings")}
+                  onOral={startOral}
+                  subject={subject}
+                  onSubject={(id) => {
+                    setSubject(id);
+                    try {
+                      if (id) localStorage.setItem("nexo-subject", id);
+                      else localStorage.removeItem("nexo-subject");
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                  daily={daily}
+                  dailyDone={dailyDone}
+                  onDaily={() => {
+                    if (!daily) return;
+                    markDailyDone(daily.id);
+                    setDailyDone(true);
+                    if (daily.subject) {
+                      const next = sanitizeSubject(daily.subject);
+                      setSubject(next);
+                      try {
+                        if (next) localStorage.setItem("nexo-subject", next);
+                      } catch {
+                        // ignore
+                      }
+                    }
+                    void send(daily.prompt);
+                  }}
                 />
               )}
             </div>
@@ -618,6 +889,12 @@ export function NexoApp() {
                       <X className="size-3.5" strokeWidth={2} />
                     </button>
                   </div>
+                ) : null}
+                {isOralReply(reply) ? (
+                  <OralChip
+                    mode={reply}
+                    onExit={() => useSettingsStore.getState().setReply("normal")}
+                  />
                 ) : null}
                 {listening ? (
                   <p className="mb-2 flex items-center gap-2 font-mono text-xs tracking-widest text-neon uppercase">
@@ -777,6 +1054,45 @@ export function NexoApp() {
           </>
         )}
       </section>
+      {cardsDraft ? (
+        <FlashcardSheet
+          drafts={cardsDraft.drafts}
+          source={cardsDraft.source}
+          onClose={() => setCardsDraft(null)}
+          onSaved={(count) => {
+            setCardsDraft(null);
+            showToast(
+              count > 0
+                ? `${count} ${count === 1 ? "ficha guardada" : "fichas guardadas"} en Fichas.`
+                : "Esas fichas ya estaban guardadas.",
+            );
+          }}
+          onAskAi={
+            link === "online"
+              ? () => {
+                  const content = cardsDraft.content;
+                  setCardsDraft(null);
+                  // Same thread: the tutor already has the explanation in the history.
+                  askFromTool(
+                    content === lastAnswer()
+                      ? CARDS_PROMPT
+                      : `${CARDS_PROMPT.replace("tu explicación anterior", "esta parte de tu explicación")}\n\n«${content.slice(0, 1200)}»`,
+                  );
+                }
+              : undefined
+          }
+        />
+      ) : null}
+      {toast ? (
+        <div
+          role="status"
+          className="g-fade pointer-events-none fixed inset-x-0 top-3 z-50 flex justify-center px-4"
+        >
+          <p className="max-w-sm rounded-md border border-neon/50 bg-bg-elev px-4 py-2.5 text-center text-sm text-fg shadow-lg">
+            {toast}
+          </p>
+        </div>
+      ) : null}
       <CelebrationOverlay
         paused={
           busy ||
@@ -884,15 +1200,28 @@ function Sidebar({
   onOpen,
   view,
   onNavigate,
+  onContinue,
+  onOral,
 }: {
   link: LinkState;
   onFresh: () => void;
   onOpen: (view: View) => void;
   view: View;
   onNavigate?: () => void;
+  onContinue?: (title: string) => void;
+  onOral: () => void;
 }) {
   const threads = useChatStore((state) => state.threads);
   const activeId = useChatStore((state) => state.activeId);
+  const reply = useSettingsStore((state) => state.reply);
+  const study: { id: View | "oral"; label: string; icon: typeof Plus }[] = [
+    { id: "plan", label: "Plan", icon: CalendarDays },
+    { id: "cards", label: "Fichas", icon: Layers },
+    { id: "compare", label: "Comparar", icon: GitCompare },
+    { id: "group", label: "Grupo", icon: Users },
+    { id: "export", label: "Exportar", icon: FileDown },
+    { id: "oral", label: "Modo oral", icon: Mic },
+  ];
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -918,133 +1247,179 @@ function Sidebar({
         ) : null}
       </div>
 
-      <div className="px-3">
-        <MenuIdentity onOpen={() => onOpen("identity")} />
-        <button
-          type="button"
-          className="tap flex h-11 w-full items-center justify-center gap-2 rounded-md bg-paper text-sm font-medium text-ink"
-          onClick={() => {
-            onFresh();
-            onNavigate?.();
-          }}
-        >
-          <Plus className="size-4" strokeWidth={1.75} />
-          Nueva conversación
-        </button>
-        <div className="mt-2 grid grid-cols-2 gap-2">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="px-3">
+          <MenuIdentity onOpen={() => onOpen("identity")} />
           <button
             type="button"
-            aria-current={view === "exam" ? "page" : undefined}
-            className={`tap flex h-11 items-center justify-center gap-2 rounded-md border text-sm ${
-              view === "exam" ? "border-neon/60 text-neon" : "border-line text-fg hover:bg-bg-soft"
-            }`}
-            onClick={() => onOpen("exam")}
-            disabled={link !== "online"}
+            className="tap flex h-11 w-full items-center justify-center gap-2 rounded-md bg-paper text-sm font-medium text-ink"
+            onClick={() => {
+              onFresh();
+              onNavigate?.();
+            }}
           >
-            <Target className="size-4" strokeWidth={1.75} />
-            Modo examen
+            <Plus className="size-4" strokeWidth={1.75} />
+            Nueva conversación
           </button>
-          <button
-            type="button"
-            aria-current={view === "profile" ? "page" : undefined}
-            className={`tap flex h-11 items-center justify-center gap-2 rounded-md border text-sm ${
-              view === "profile"
-                ? "border-neon/60 text-neon"
-                : "border-line text-fg hover:bg-bg-soft"
-            }`}
-            onClick={() => onOpen("profile")}
-          >
-            <Trophy className="size-4" strokeWidth={1.75} />
-            Tu perfil
-          </button>
-        </div>
-        <ReviewMenuButton onOpen={() => onOpen("review")} />
-        <button
-          type="button"
-          aria-current={view === "settings" ? "page" : undefined}
-          className={`tap mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm ${
-            view === "settings"
-              ? "border-neon/60 text-neon"
-              : "border-line text-fg hover:bg-bg-soft"
-          }`}
-          onClick={() => onOpen("settings")}
-        >
-          <Settings className="size-4" strokeWidth={1.75} />
-          Ajustes
-        </button>
-        <button
-          type="button"
-          aria-current={view === "favorites" ? "page" : undefined}
-          className={`tap mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm ${
-            view === "favorites" ? "border-neon/60 text-neon" : "border-line text-fg hover:bg-bg-soft"
-          }`}
-          onClick={() => onOpen("favorites")}
-        >
-          <Star className="size-4" strokeWidth={1.75} />
-          Favoritos
-        </button>
-        <button
-          type="button"
-          aria-current={view === "cards" ? "page" : undefined}
-          className={`tap mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm ${
-            view === "cards" ? "border-neon/60 text-neon" : "border-line text-fg hover:bg-bg-soft"
-          }`}
-          onClick={() => onOpen("cards")}
-        >
-          <Layers className="size-4" strokeWidth={1.75} />
-          Fichas
-        </button>
-        <button
-          type="button"
-          aria-current={view === "week" ? "page" : undefined}
-          className={`tap mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm ${
-            view === "week" ? "border-neon/60 text-neon" : "border-line text-fg hover:bg-bg-soft"
-          }`}
-          onClick={() => onOpen("week")}
-        >
-          <Flag className="size-4" strokeWidth={1.75} />
-          Desafío
-        </button>
-        <p className="px-1 pt-3 text-xs leading-relaxed text-faint">
-          Las respuestas vienen de un modelo en línea. Esta lista solo vive en este navegador.
-        </p>
-      </div>
-
-      <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        <p className="px-3 pb-2 text-xs text-faint">Conversaciones</p>
-        {threads.length === 0 ? (
-          <p className="px-3 text-sm text-faint">Todavía no hay ninguna.</p>
-        ) : (
-          <ul className="flex flex-col">
-            {threads.map((thread) => (
-              <li key={thread.id} className="flex items-center">
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              aria-current={view === "exam" ? "page" : undefined}
+              className={`tap flex h-11 items-center justify-center gap-2 rounded-md border text-sm ${
+                view === "exam"
+                  ? "border-neon/60 text-neon"
+                  : "border-line text-fg hover:bg-bg-soft"
+              }`}
+              onClick={() => onOpen("exam")}
+              disabled={link !== "online"}
+            >
+              <Target className="size-4" strokeWidth={1.75} />
+              Modo examen
+            </button>
+            <button
+              type="button"
+              aria-current={view === "profile" ? "page" : undefined}
+              className={`tap flex h-11 items-center justify-center gap-2 rounded-md border text-sm ${
+                view === "profile"
+                  ? "border-neon/60 text-neon"
+                  : "border-line text-fg hover:bg-bg-soft"
+              }`}
+              onClick={() => onOpen("profile")}
+            >
+              <Trophy className="size-4" strokeWidth={1.75} />
+              Tu perfil
+            </button>
+          </div>
+          <ReviewMenuButton onOpen={() => onOpen("review")} />
+          <p className="px-1 pt-3 pb-1.5 text-xs text-faint">Estudio</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {study.map((item) => {
+              const current =
+                item.id === "oral" ? isOralReply(reply) && view === "chat" : view === item.id;
+              const Icon = item.icon;
+              return (
                 <button
+                  key={item.id}
                   type="button"
+                  aria-current={current ? "page" : undefined}
+                  className={`tap flex h-10 items-center gap-2 rounded-md border px-2.5 text-left text-[13px] ${
+                    current ? "border-neon/60 text-neon" : "border-line text-fg hover:bg-bg-soft"
+                  }`}
                   onClick={() => {
-                    useChatStore.getState().select(thread.id);
-                    onOpen("chat");
+                    if (item.id === "oral") onOral();
+                    else onOpen(item.id);
                     onNavigate?.();
                   }}
-                  className={`min-w-0 flex-1 truncate rounded-md px-3 py-2.5 text-left text-sm ${
-                    thread.id === activeId
-                      ? "bg-paper text-ink"
-                      : "text-muted hover:bg-bg-soft hover:text-fg"
-                  }`}
                 >
-                  {thread.title}
+                  <Icon className="size-4 shrink-0 text-neon" strokeWidth={1.75} />
+                  <span className="truncate">{item.label}</span>
                 </button>
-                <button
-                  type="button"
-                  aria-label={`Borrar ${thread.title}`}
-                  className="tap grid size-11 shrink-0 place-items-center text-faint hover:text-fg"
-                  onClick={() => useChatStore.getState().remove(thread.id)}
-                >
-                  <X className="size-4" strokeWidth={1.5} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+              );
+            })}
+          </div>
+          <details className="mt-2 rounded-md border border-line open:bg-bg-soft/40">
+            <summary className="tap flex h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 text-sm text-fg">
+              <span className="font-medium">Más</span>
+              <span className="text-xs text-faint">favoritos, desafío, ajustes</span>
+            </summary>
+            <div className="flex flex-col gap-1 border-t border-line p-1.5">
+              <button
+                type="button"
+                aria-current={view === "favorites" ? "page" : undefined}
+                className={`tap flex h-10 w-full items-center gap-2 rounded-md px-3 text-sm ${
+                  view === "favorites"
+                    ? "bg-paper text-ink"
+                    : "text-muted hover:bg-bg-soft hover:text-fg"
+                }`}
+                onClick={() => onOpen("favorites")}
+              >
+                <Star className="size-4" strokeWidth={1.75} />
+                Favoritos
+              </button>
+              <button
+                type="button"
+                aria-current={view === "week" ? "page" : undefined}
+                className={`tap flex h-10 w-full items-center gap-2 rounded-md px-3 text-sm ${
+                  view === "week"
+                    ? "bg-paper text-ink"
+                    : "text-muted hover:bg-bg-soft hover:text-fg"
+                }`}
+                onClick={() => onOpen("week")}
+              >
+                <Flag className="size-4" strokeWidth={1.75} />
+                Desafío
+              </button>
+              <button
+                type="button"
+                aria-current={view === "settings" ? "page" : undefined}
+                className={`tap flex h-10 w-full items-center gap-2 rounded-md px-3 text-sm ${
+                  view === "settings"
+                    ? "bg-paper text-ink"
+                    : "text-muted hover:bg-bg-soft hover:text-fg"
+                }`}
+                onClick={() => onOpen("settings")}
+              >
+                <Settings className="size-4" strokeWidth={1.75} />
+                Ajustes
+              </button>
+            </div>
+          </details>
+          <p className="px-1 pt-3 text-xs leading-relaxed text-faint">
+            Gratis · {FREE_CAPS.chats} chats y {FREE_CAPS.exams} exámenes por día en este
+            dispositivo. El historial vive solo en este navegador.
+          </p>
+        </div>
+
+        <div className="mt-4 px-2 pb-4">
+          <p className="px-3 pb-2 text-xs text-faint">Conversaciones</p>
+          {threads.length === 0 ? (
+            <p className="px-3 text-sm text-faint">Todavía no hay ninguna.</p>
+          ) : (
+            <ul className="flex flex-col">
+              {threads.map((thread) => (
+                <li key={thread.id} className="flex flex-col border-b border-line/60 last:border-0">
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        useChatStore.getState().select(thread.id);
+                        onOpen("chat");
+                        onNavigate?.();
+                      }}
+                      className={`min-w-0 flex-1 truncate rounded-md px-3 py-2.5 text-left text-sm ${
+                        thread.id === activeId
+                          ? "bg-paper text-ink"
+                          : "text-muted hover:bg-bg-soft hover:text-fg"
+                      }`}
+                    >
+                      {thread.title}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Borrar ${thread.title}`}
+                      className="tap grid size-11 shrink-0 place-items-center text-faint hover:text-fg"
+                      onClick={() => useChatStore.getState().remove(thread.id)}
+                    >
+                      <X className="size-4" strokeWidth={1.5} />
+                    </button>
+                  </div>
+                  {onContinue && thread.messages.length > 0 ? (
+                    <button
+                      type="button"
+                      className="tap mb-1 ml-3 self-start rounded-sm px-2 py-1 text-[11px] text-neon hover:bg-neon/10"
+                      onClick={() => {
+                        onContinue(thread.title);
+                        onNavigate?.();
+                      }}
+                    >
+                      Seguir con este tema
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
       <div className="border-t border-line px-2 py-2">
         <Donate />
@@ -1072,10 +1447,28 @@ function Empty({
   onPick,
   onExam,
   onReview,
+  onPlan,
+  onGroup,
+  onSettings,
+  onOral,
+  subject,
+  onSubject,
+  daily,
+  dailyDone,
+  onDaily,
 }: {
   onPick: (prompt: string) => void;
   onExam?: () => void;
   onReview: () => void;
+  onPlan: () => void;
+  onGroup: () => void;
+  onSettings: () => void;
+  onOral: () => void;
+  subject: SubjectChoice;
+  onSubject: (id: SubjectChoice) => void;
+  daily: DailyChallenge | null;
+  dailyDone: boolean;
+  onDaily: () => void;
 }) {
   const streakLine = useStreakLine();
   const missions = useMissions();
@@ -1097,6 +1490,58 @@ function Empty({
       <p className="rise rise-2 mt-3 text-base leading-relaxed text-muted">
         Elige una misión rápida o escribe la tuya.
       </p>
+      {daily ? (
+        <button
+          type="button"
+          onClick={onDaily}
+          className="rise rise-2 tap chip mt-5 flex w-full items-center gap-3 rounded-sm border border-neon/45 bg-neon/8 px-3 py-3 text-left"
+        >
+          <Flag className="size-5 shrink-0 text-neon" strokeWidth={1.75} />
+          <span className="min-w-0 flex-1">
+            <span className="block font-mono text-[10px] tracking-widest text-neon uppercase">
+              Desafío diario{dailyDone ? " · listo" : ""}
+            </span>
+            <span className="mt-0.5 block truncate text-sm text-fg">{daily.title}</span>
+          </span>
+          <span className="shrink-0 font-mono text-[10px] tracking-wider text-faint uppercase">
+            {dailyDone ? "Otra vez" : "Gratis"}
+          </span>
+        </button>
+      ) : null}
+      <GoalCard onSettings={onSettings} />
+      <TodayCards onPlan={onPlan} onGroup={onGroup} />
+      <div className="rise rise-2 mt-5">
+        <p className="mb-2 font-mono text-xs tracking-widest text-faint uppercase">Materias</p>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => onSubject(SUBJECT_NONE)}
+            className={`tap rounded-sm border px-2.5 py-1.5 text-xs ${
+              !subject ? "border-neon/60 text-neon" : "border-line text-muted"
+            }`}
+          >
+            Todas
+          </button>
+          {SUBJECTS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              title={item.hint}
+              onClick={() => onSubject(item.id === subject ? SUBJECT_NONE : item.id)}
+              className={`tap rounded-sm border px-2.5 py-1.5 text-xs ${
+                subject === item.id ? "border-neon/60 text-neon" : "border-line text-muted"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        {subject ? (
+          <p className="mt-1.5 text-xs text-faint">
+            Tono: {subjectLabel(subject)}. Solo en este dispositivo.
+          </p>
+        ) : null}
+      </div>
       <div className="rise rise-3 mt-8 mb-2.5 flex items-center justify-between gap-2">
         <p className="font-mono text-xs tracking-widest text-faint uppercase">Misiones rápidas</p>
         <button
@@ -1137,6 +1582,24 @@ function Empty({
           </span>
         </button>
       ) : null}
+      <div className="rise rise-3 mt-2 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onPlan}
+          className="tap chip flex h-12 w-full items-center gap-2.5 rounded-sm border border-line bg-bg-elev/70 px-3 text-left text-sm text-fg"
+        >
+          <CalendarDays className="size-4 shrink-0 text-neon" strokeWidth={1.75} />
+          <span className="truncate">Plan de estudio</span>
+        </button>
+        <button
+          type="button"
+          onClick={onOral}
+          className="tap chip flex h-12 w-full items-center gap-2.5 rounded-sm border border-line bg-bg-elev/70 px-3 text-left text-sm text-fg"
+        >
+          <Mic className="size-4 shrink-0 text-neon" strokeWidth={1.75} />
+          <span className="truncate">Tomame oral</span>
+        </button>
+      </div>
       {mistakeCount > 0 ? (
         <button
           type="button"
@@ -1229,6 +1692,8 @@ function Message({
   phase,
   speaking,
   onSpeak,
+  onCards,
+  onCompare,
 }: {
   message: ChatMessage;
   question?: string;
@@ -1236,6 +1701,8 @@ function Message({
   phase: "idle" | "search" | "write";
   speaking: boolean;
   onSpeak?: () => void;
+  onCards?: () => void;
+  onCompare?: () => void;
 }) {
   const starred = useFavoritesStore((state) => state.items.some((item) => item.id === message.id));
   const [copied, setCopied] = useState(false);
@@ -1274,65 +1741,6 @@ function Message({
             NEXO AI
           </span>
         </span>
-        {message.content && !streaming ? (
-          <span className="flex items-center">
-            <button
-              type="button"
-              aria-pressed={starred}
-              className={`tap hud-btn flex h-11 items-center gap-1.5 px-2 text-xs ${
-                starred ? "text-neon" : "text-faint"
-              }`}
-              onClick={() =>
-                useFavoritesStore.getState().toggle({
-                  id: message.id,
-                  q: question?.trim() || "Respuesta",
-                  a: message.content,
-                  at: Date.now(),
-                })
-              }
-            >
-              <Star className="size-3.5" strokeWidth={1.75} fill={starred ? "currentColor" : "none"} />
-              {starred ? "Guardada" : "Favorito"}
-            </button>
-            {onSpeak ? (
-              <button
-                type="button"
-                aria-pressed={speaking}
-                className={`tap hud-btn flex h-11 items-center gap-1.5 px-2 text-xs ${
-                  speaking ? "text-neon" : "text-faint"
-                }`}
-                onClick={onSpeak}
-              >
-                {speaking ? (
-                  <Square className="size-3.5" strokeWidth={1.75} />
-                ) : (
-                  <Volume2 className="size-3.5" strokeWidth={1.75} />
-                )}
-                {speaking ? "Detener" : "Escuchar"}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="tap hud-btn flex h-11 items-center gap-1.5 px-2 text-xs text-faint"
-              onClick={() => {
-                void navigator.clipboard.writeText(message.content).then(() => {
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 1400);
-                });
-              }}
-            >
-              <span className="icon-slot">
-                <span className={copied ? "icon-on" : "icon-off"}>
-                  <Check className="size-3.5" strokeWidth={1.75} />
-                </span>
-                <span className={copied ? "icon-off" : "icon-on"}>
-                  <Copy className="size-3.5" strokeWidth={1.75} />
-                </span>
-              </span>
-              {copied ? "Copiado" : "Copiar"}
-            </button>
-          </span>
-        ) : null}
       </div>
       <div className="assistant-rail border-l border-line pl-4">
         {message.content ? (
@@ -1361,6 +1769,91 @@ function Message({
           </ul>
         ) : null}
       </div>
+      {message.content && !streaming ? (
+        <div className="msg-actions mt-1 flex flex-wrap items-center pl-2">
+          <button
+            type="button"
+            aria-pressed={starred}
+            className={`tap hud-btn flex h-11 items-center gap-1.5 px-2 text-xs ${
+              starred ? "text-neon" : "text-faint"
+            }`}
+            onClick={() =>
+              useFavoritesStore.getState().toggle({
+                id: message.id,
+                q: question?.trim() || "Respuesta",
+                a: message.content,
+                at: Date.now(),
+              })
+            }
+          >
+            <Star
+              className="size-3.5"
+              strokeWidth={1.75}
+              fill={starred ? "currentColor" : "none"}
+            />
+            {starred ? "Guardada" : "Favorito"}
+          </button>
+          {onSpeak ? (
+            <button
+              type="button"
+              aria-pressed={speaking}
+              className={`tap hud-btn flex h-11 items-center gap-1.5 px-2 text-xs ${
+                speaking ? "text-neon" : "text-faint"
+              }`}
+              onClick={onSpeak}
+            >
+              {speaking ? (
+                <Square className="size-3.5" strokeWidth={1.75} />
+              ) : (
+                <Volume2 className="size-3.5" strokeWidth={1.75} />
+              )}
+              {speaking ? "Detener" : "Escuchar"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="tap hud-btn flex h-11 items-center gap-1.5 px-2 text-xs text-faint"
+            onClick={() => {
+              void navigator.clipboard.writeText(message.content).then(() => {
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1400);
+              });
+            }}
+          >
+            <span className="icon-slot">
+              <span className={copied ? "icon-on" : "icon-off"}>
+                <Check className="size-3.5" strokeWidth={1.75} />
+              </span>
+              <span className={copied ? "icon-off" : "icon-on"}>
+                <Copy className="size-3.5" strokeWidth={1.75} />
+              </span>
+            </span>
+            {copied ? "Copiado" : "Copiar"}
+          </button>
+          {onCards ? (
+            <button
+              type="button"
+              className="tap hud-btn flex h-11 items-center gap-1.5 px-2 text-xs text-faint"
+              onClick={onCards}
+              title="Convertir esta explicación en fichas para practicar sin internet"
+            >
+              <Layers className="size-3.5" strokeWidth={1.75} />
+              Fichas
+            </button>
+          ) : null}
+          {onCompare ? (
+            <button
+              type="button"
+              className="tap hud-btn flex h-11 items-center gap-1.5 px-2 text-xs text-faint"
+              onClick={onCompare}
+              title="Comparar esta respuesta con tu apunte (PDF)"
+            >
+              <GitCompare className="size-3.5" strokeWidth={1.75} />
+              Comparar
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }

@@ -1,13 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { globalBudgetAllows, requireDeviceAccess } from "@/lib/access.server";
 import { parseChatBody } from "@/lib/chat-payload";
 import { runIfWithinQuota } from "@/lib/rate-limit.server";
-import { explainAddon, replyAddon } from "@/lib/settings";
+import { explainAddon, mobileShortAddon, replyAddon } from "@/lib/settings";
+import { subjectAddon } from "@/lib/subjects";
 import { systemPrompt } from "@/lib/tutor.server";
 
 export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const access = await requireDeviceAccess(request);
+        if (!access.ok) return access.response;
+
         let payload: unknown;
         try {
           payload = await request.json();
@@ -20,9 +25,21 @@ export const Route = createFileRoute("/api/chat")({
           return Response.json({ error: parsed.error }, { status: 400 });
         }
 
+        if (!globalBudgetAllows("chat")) {
+          return Response.json(
+            { error: "NEXO alcanzó el tope general de hoy. Probá mañana." },
+            { status: 429 },
+          );
+        }
+
         return runIfWithinQuota(
           request,
-          { bucket: "chat", message: "Demasiadas preguntas seguidas. Espera un momento." },
+          {
+            bucket: "chat",
+            deviceKey: access.deviceKey,
+            message:
+              "Llegaste al límite gratis de hoy (40 chats). Mañana se renueva el cupo.",
+          },
           async () => {
             const apiKey = process.env.XAI_API_KEY;
             if (!apiKey) {
@@ -47,11 +64,20 @@ export const Route = createFileRoute("/api/chat")({
                   stream: true,
                   // xAI advises not storing server-side history when sending images.
                   store: false,
-                  max_output_tokens: 1000,
+                  max_output_tokens:
+                    parsed.mobile || parsed.explain === "simple" ? 700 : 1000,
                   temperature: 0.4,
                   tools: [{ type: "web_search" }],
                   input: [
-                    { role: "system", content: systemPrompt() + explainAddon(parsed.explain) + replyAddon(parsed.reply) },
+                    {
+                      role: "system",
+                      content:
+                        systemPrompt() +
+                        explainAddon(parsed.explain) +
+                        replyAddon(parsed.reply) +
+                        subjectAddon(parsed.subject) +
+                        mobileShortAddon(parsed.mobile, parsed.explain),
+                    },
                     ...parsed.input,
                   ],
                 }),

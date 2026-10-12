@@ -105,13 +105,38 @@ export function foldMistakes(
     .slice(0, MISTAKE_CAP);
 }
 
+/** How many mistakes to offer right after a failed exam. */
+export const QUICK_REVIEW_COUNT = 3;
+
+/**
+ * Mini-exam from the wrong answers of the exam just finished (max `limit`).
+ * Local only — does not call the model. Null when there is nothing to retry.
+ */
+export function reviewFromExam(
+  questions: ExamQuestion[],
+  answers: Array<ExamAnswer | undefined>,
+  limit = QUICK_REVIEW_COUNT,
+): ExamPaper | null {
+  const wrong = questions.filter((_, index) => answers[index]?.verdict !== "correcta");
+  if (wrong.length === 0) return null;
+  const cap = Math.max(1, Math.min(limit, wrong.length));
+  return {
+    title: "Repaso del error",
+    questions: wrong.slice(0, cap).map((question, index) => ({
+      ...question,
+      id: `e${index + 1}`,
+    })),
+  };
+}
+
 /** Exam made only of the saved questions (newest first). Null when the pile is empty. */
-export function reviewPaper(pile: Mistake[]): ExamPaper | null {
+export function reviewPaper(pile: Mistake[], limit?: number): ExamPaper | null {
   const items = sanitizeMistakes(pile);
   if (items.length === 0) return null;
+  const chosen = typeof limit === "number" && limit > 0 ? items.slice(0, limit) : items;
   return {
     title: "Repaso de errores",
-    questions: items.map((item, index) => ({ ...item.question, id: `r${index + 1}` })),
+    questions: chosen.map((item, index) => ({ ...item.question, id: `r${index + 1}` })),
   };
 }
 

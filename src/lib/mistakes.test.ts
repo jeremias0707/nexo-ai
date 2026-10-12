@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ExamQuestion } from "./exam.ts";
-import { foldMistakes, mistakeButtonLabel, MISTAKE_CAP, reviewPaper } from "./mistakes.ts";
+import { foldMistakes, mistakeButtonLabel, MISTAKE_CAP, QUICK_REVIEW_COUNT, reviewFromExam, reviewPaper } from "./mistakes.ts";
 
 const mc = (n: number): ExamQuestion => ({
   id: `q${n}`,
@@ -90,5 +90,24 @@ describe("repasar errores", () => {
     const kept = foldMistakes(saved, [written(1)], [{ given: "y" }], 9000);
     assert.equal(kept.length, 1);
     assert.equal(kept[0].savedAt, saved[0].savedAt);
+  });
+
+  it("builds a 3-question repaso del error from the failed exam", () => {
+    const questions = [mc(1), mc(2), mc(3), mc(4), written(5)];
+    const answers = [
+      { given: 0, verdict: "incorrecta" as const },
+      { given: 1, verdict: "correcta" as const },
+      { given: 2, verdict: "incorrecta" as const },
+      { given: 0, verdict: "incorrecta" as const },
+      { given: "no", verdict: "incorrecta" as const },
+    ];
+    const paper = reviewFromExam(questions, answers, QUICK_REVIEW_COUNT);
+    assert.ok(paper);
+    assert.equal(paper?.title, "Repaso del error");
+    assert.equal(paper?.questions.length, 3);
+    assert.equal(paper?.questions[0].prompt, "Pregunta 1");
+    assert.equal(paper?.questions[1].prompt, "Pregunta 3");
+    assert.equal(paper?.questions[2].prompt, "Pregunta 4");
+    assert.equal(reviewFromExam(questions, answers.map(() => ({ given: 1, verdict: "correcta" as const }))), null);
   });
 });

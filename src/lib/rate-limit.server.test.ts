@@ -386,3 +386,35 @@ describe("AI quota", { concurrency: false }, () => {
     assert.match(status, /online:\s*Boolean\(process\.env\.XAI_API_KEY\)/);
   });
 });
+
+describe("Stage A per-device memory caps", { concurrency: false }, () => {
+  const original = {
+    DATABASE_URL: process.env.DATABASE_URL,
+    VERCEL: process.env.VERCEL,
+  };
+
+  afterEach(() => {
+    setRateLimitQueryForTests(null);
+    setRateLimitNowForTests(null);
+    resetRateLimitMemoryForTests();
+    if (original.DATABASE_URL === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = original.DATABASE_URL;
+    if (original.VERCEL === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = original.VERCEL;
+  });
+
+  it("gives each device its own daily chat budget on the Grok host", async () => {
+    delete process.env.DATABASE_URL;
+    delete process.env.VERCEL;
+    let now = 1_700_000_000_000;
+    setRateLimitNowForTests(() => now);
+    for (let i = 0; i < DAILY_CHAT_MAX; i++) {
+      if (i > 0 && i % MAX_HITS === 0) now += WINDOW_MS + 1;
+      assert.equal(await tooManyRequests(null, 1, "chat", "device-a-key"), false);
+    }
+    now += WINDOW_MS + 1;
+    assert.equal(await tooManyRequests(null, 1, "chat", "device-a-key"), true);
+    // Another device still has room.
+    assert.equal(await tooManyRequests(null, 1, "chat", "device-b-key"), false);
+  });
+});

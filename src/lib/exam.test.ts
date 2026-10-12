@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { gradeSystemPrompt } from "./tutor.server.ts";
 import { describe, it } from "node:test";
 import {
   checkExamRequest,
@@ -11,6 +12,9 @@ import {
   looseJson,
   parseExamOutput,
   parseGradeOutput,
+  rubricLabel,
+  rubricSummary,
+  GRADE_SCHEMA,
   passed,
   responseText,
   reviewPrompt,
@@ -255,5 +259,40 @@ describe("reviewPrompt", () => {
       ),
       /sin errores/,
     );
+  });
+
+  it("2.6 rubric: keeps the grader tip and labels Bien / A medias / Mal", () => {
+    const parsed = parseGradeOutput(
+      JSON.stringify({
+        results: [
+          { verdict: "correcta", feedback: "Nombraste la causa.", tip: "Tip: sumá la fecha para que sea completa." },
+          { verdict: "parcial", feedback: "Falta la consecuencia.", tip: "" },
+        ],
+      }),
+      2,
+    );
+    assert.deepEqual(parsed, [
+      { verdict: "correcta", feedback: "Nombraste la causa.", tip: "sumá la fecha para que sea completa." },
+      { verdict: "parcial", feedback: "Falta la consecuencia." },
+    ]);
+    assert.equal(rubricLabel("correcta"), "Bien");
+    assert.equal(rubricLabel("parcial"), "A medias");
+    assert.equal(rubricLabel("incorrecta"), "Mal");
+    assert.equal(rubricLabel(undefined), "Sin corregir");
+    assert.deepEqual(GRADE_SCHEMA.properties.results.items.required, ["verdict", "feedback", "tip"]);
+    const summary = rubricSummary(
+      [{ given: 0, verdict: "correcta" }, { given: "algo", verdict: "parcial" }, { given: null, verdict: "incorrecta" }, { given: "x" }],
+      5,
+    );
+    assert.equal(summary.text, "1 bien · 1 a medias · 2 mal · 1 sin corregir");
+  });
+
+  it("2.6 rubric: the grading prompt explains the three levels and the tip", () => {
+    const prompt = gradeSystemPrompt();
+    assert.match(prompt, /BIEN/);
+    assert.match(prompt, /A MEDIAS/);
+    assert.match(prompt, /MAL/);
+    assert.match(prompt, /"tip"/);
+    assert.match(prompt, /respuesta_del_estudiante/);
   });
 });

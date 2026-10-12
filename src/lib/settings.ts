@@ -3,7 +3,27 @@
 export const THEMES = ["oscuro", "claro"] as const;
 export const TEXT_SIZES = ["chico", "normal", "grande"] as const;
 export const EXPLAINS = ["simple", "normal", "fondo"] as const;
-export const REPLIES = ["normal", "pasos", "preguntas", "examen"] as const;
+/**
+ * "guiado" = soft Socratic study mode (ask what they know first).
+ * "oral" = answer the way you would say it in an oral exam (2.6).
+ * "profe" = the tutor plays a teacher taking an oral exam, one question at a time (2.6).
+ */
+export const REPLIES = [
+  "normal",
+  "pasos",
+  "preguntas",
+  "examen",
+  "guiado",
+  "oral",
+  "profe",
+] as const;
+
+/** Reply modes made for speaking practice (the chat shows a "Modo oral" chip). */
+export const ORAL_REPLIES: readonly ReplyMode[] = ["oral", "profe"];
+
+export function isOralReply(value: unknown): value is "oral" | "profe" {
+  return (ORAL_REPLIES as readonly string[]).includes(String(value));
+}
 
 export type ThemeId = (typeof THEMES)[number];
 export type TextSize = (typeof TEXT_SIZES)[number];
@@ -55,7 +75,7 @@ export function sanitizeSettings(value: unknown): Settings {
 export function explainAddon(value: unknown): string {
   const depth = sanitizeExplain(value);
   if (depth === "simple") {
-    return "\n\nPedido para esta respuesta (no reemplaza las reglas de arriba): usá frases cortas y un ejemplo de la vida cotidiana o de un videojuego.";
+    return "\n\nPedido para esta respuesta (no reemplaza las reglas de arriba): respondé en pocas frases cortas (como máximo un párrafo corto o 4–6 líneas). Un solo ejemplo de la vida cotidiana o de un videojuego. Sin relleno ni listas largas.";
   }
   if (depth === "fondo") {
     return "\n\nPedido para esta respuesta (no reemplaza las reglas de arriba): incluí los límites del concepto, el error típico y un poco más de profundidad.";
@@ -79,5 +99,24 @@ export function replyAddon(value: unknown): string {
   if (mode === "examen") {
     return "\n\nPedido para esta respuesta (no reemplaza las reglas de arriba): respondé como si corrigieras un examen: veredicto corto, qué está bien y qué falta.";
   }
+  if (mode === "oral") {
+    return "\n\nPedido para esta respuesta (no reemplaza las reglas de arriba): modo oral. Respondé como lo diría en voz alta un estudiante bien preparado en un examen oral: una primera frase que defina el tema; después 3 o 4 ideas en orden, unidas con conectores (primero, además, por eso, en conclusión); un ejemplo concreto y una frase de cierre. Frases cortas, fáciles de decir. Sin tablas, sin diagramas ni gráficos; si hay una fórmula, decí también cómo se lee en palabras. Al final, en una línea aparte, escribí «Te pueden repreguntar:» y una pregunta que haría un profesor.";
+  }
+  if (mode === "profe") {
+    return "\n\nPedido para esta respuesta (no reemplaza las reglas de arriba): simulá a un profesor tomando un examen oral, amable pero exigente. Si todavía no hay tema, preguntá de qué tema y nivel es el oral. Con un tema, hacé UNA sola pregunta de oral por vez y esperá la respuesta; no des la respuesta antes de que intente. Cuando el estudiante responda, corregí empezando con «Bien», «A medias» o «Mal», decí en una frase qué faltó o qué estuvo mal, sumá un tip corto (empezá con «Tip:») y después hacé la siguiente pregunta, un poco más difícil. Si pide la respuesta o dice que no sabe, explicala corto y seguí. Sin tablas ni diagramas.";
+  }
+  if (mode === "guiado") {
+    return "\n\nPedido para esta respuesta (no reemplaza las reglas de arriba): modo estudio guiado (socrático suave). Primero preguntá en una frase qué sabe o qué ya intentó sobre el tema. Esperá su respuesta antes de cerrar la explicación completa. Si ya contestó eso en el historial, seguí con una pista o el siguiente paso corto, sin soltar todo de golpe.";
+  }
   return "";
+}
+
+/**
+ * Shorter answers by default on mobile. Applied when the client says mobile
+ * and the user did not pick "a fondo". Never replaces the main rules.
+ */
+export function mobileShortAddon(mobile: unknown, explain: unknown): string {
+  if (mobile !== true) return "";
+  if (sanitizeExplain(explain) === "fondo") return "";
+  return "\n\nPedido para esta respuesta (pantalla chica; no reemplaza las reglas de arriba): priorizá respuestas cortas y fáciles de leer en el celular. Evitá párrafos largos; si hace falta más detalle, ofrecé ampliar al final en una frase.";
 }

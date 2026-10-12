@@ -30,6 +30,9 @@ import {
   gradeChoice,
   LETTERS,
   passed,
+  RUBRIC,
+  rubricLabel,
+  rubricSummary,
   type ExamAnswer,
   type ExamCount,
   type ExamDifficulty,
@@ -42,11 +45,14 @@ import {
   foldMistakes,
   loadMistakes,
   mistakeButtonLabel,
+  QUICK_REVIEW_COUNT,
+  reviewFromExam,
   reviewPaper,
   saveMistakes,
 } from "@/lib/mistakes";
 import { useMistakeCount } from "@/lib/use-mistakes";
 import { prepareImage, type PreparedImage } from "@/lib/image-client";
+import { deviceHeaders, clearDeviceToken } from "@/lib/access-client";
 import { DAILY, dayKey } from "@/lib/progress";
 import { useProgressStore } from "@/lib/progress-store";
 import { useWeekStore } from "@/lib/local-store";
@@ -82,11 +88,15 @@ function shortClock(ms: number) {
 async function postJson<T>(url: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: deviceHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
     signal,
   });
-  const data = (await response.json().catch(() => ({}))) as T & { error?: string };
+  const data = (await response.json().catch(() => ({}))) as T & { error?: string; code?: string };
+  if (response.status === 401 && data.code === "access_required") {
+    clearDeviceToken();
+    throw new Error(data.error || "Necesitás el código de acceso de NEXO.");
+  }
   if (!response.ok) throw new Error(data.error || "No pude conectar con NEXO. Probá de nuevo.");
   return data;
 }
@@ -212,6 +222,18 @@ export function ExamView({
   function beginReview() {
     const next = reviewPaper(loadMistakes());
     if (!next) return;
+    startLocalPaper(next);
+  }
+
+  /** After a failed exam: only the mistakes from THIS attempt (max 3). */
+  function beginQuickReview() {
+    if (!paper) return;
+    const next = reviewFromExam(paper.questions, answers, QUICK_REVIEW_COUNT);
+    if (!next) return;
+    startLocalPaper(next);
+  }
+
+  function startLocalPaper(next: ExamPaper) {
     abortRef.current?.abort();
     recordedRef.current = false;
     setReviewing(true);
@@ -335,7 +357,12 @@ export function ExamView({
         slice.forEach(({ i }, n) => {
           const result = results[n];
           if (result)
-            graded[i] = { ...graded[i], verdict: result.verdict, feedback: result.feedback };
+            graded[i] = {
+              ...graded[i],
+              verdict: result.verdict,
+              feedback: result.feedback,
+              ...(result.tip ? { tip: result.tip } : {}),
+            };
         });
       }
       finish(graded);
@@ -578,9 +605,11 @@ export function ExamView({
 
             <div className="g-card mt-5 bg-bg-elev/60 px-3.5 py-3 text-[13px] leading-normal text-muted">
               <span className="font-semibold text-fg">Cómo funciona:</span> NEXO arma las preguntas
-              sobre tu tema, sin mostrar las respuestas. Al final ves tu nota, las correcciones y
-              una explicación corta de cada error. Si te equivocás, la pregunta queda en este
-              dispositivo para repasarla.
+              sobre tu tema, sin mostrar las respuestas. Al final ves tu nota y cada respuesta
+              escrita corregida como <span className="text-accent-g">Bien</span>,{" "}
+              <span className="text-[#f0b43e]">A medias</span> o{" "}
+              <span className="text-accent-r">Mal</span>, con un tip corto. Si te equivocás, la
+              pregunta queda en este dispositivo para repasarla.
             </div>
             <div className="mt-[18px] flex items-center justify-between gap-2 font-mono text-[11.5px] text-muted">
               <span className="flex items-center gap-1.5">
@@ -844,6 +873,7 @@ export function ExamView({
   const ok = passed(nota);
   const right = answers.filter((a) => a?.verdict === "correcta").length;
   const toReview = paper.questions.length - right;
+  const rubric = rubricSummary(answers, paper.questions.length);
   return (
     <>
       {header("Examen terminado", subtitle, status, "x")}
@@ -872,7 +902,7 @@ export function ExamView({
                   {ok ? "Aprobado" : "Desaprobado"}
                 </p>
                 <p className="mt-1 mb-2 text-[12.5px] text-muted">
-                  {right} bien · {toReview} para repasar · {shortClock(elapsed)} min
+                  {rubric.text} · {shortClock(elapsed)} min
                 </p>
                 <span className="g-chip level h-7">+{earned} XP</span>
                 {capped ? (
@@ -881,7 +911,17 @@ export function ExamView({
               </div>
             </div>
           </div>
-          <p className="g-label mt-5 mb-0.5">Preguntas</p>
+          <p className="g-label mt-5 mb-1">Preguntas</p>
+          <p className="mb-1 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-faint">
+            {(["correcta", "parcial", "incorrecta"] as const).map((v) => (
+              <span key={v}>
+                <span style={{ color: RUBRIC[v].color }} className="font-semibold">
+                  {RUBRIC[v].label}
+                </span>
+                : {RUBRIC[v].short.toLowerCase()}
+              </span>
+            ))}
+          </p>
           <ul>
             {paper.questions.map((question, i) => {
               const a = answers[i];
@@ -903,6 +943,12 @@ export function ExamView({
                       className={`nexo-exam-body flex-1 text-[13.5px] leading-snug ${verdict === "correcta" ? "text-muted" : "text-fg"}`}
                     >
                       {question.prompt}
+                    </span>
+                    <span
+                      className="shrink-0 pt-0.5 font-mono text-[10.5px] tracking-wider uppercase"
+                      style={{ color: verdict ? RUBRIC[verdict].color : "#8d8d8a" }}
+                    >
+                      {rubricLabel(verdict)}
                     </span>
                     <ChevronDown
                       className={`mt-0.5 size-[13px] shrink-0 text-faint transition-transform ${isOpen ? "rotate-180" : ""}`}
@@ -947,7 +993,21 @@ export function ExamView({
                           <span className="text-accent-g">{correctText(question)}</span>
                         </p>
                       ) : null}
-                      {a?.feedback ? <p className="mt-1.5 text-fg">{a.feedback}</p> : null}
+                      {question.kind === "written" && verdict ? (
+                        <p className="mt-1.5 text-fg">
+                          <span className="font-semibold" style={{ color: RUBRIC[verdict].color }}>
+                            {RUBRIC[verdict].label}.
+                          </span>{" "}
+                          {a?.feedback || RUBRIC[verdict].short}
+                        </p>
+                      ) : a?.feedback ? (
+                        <p className="mt-1.5 text-fg">{a.feedback}</p>
+                      ) : null}
+                      {a?.tip ? (
+                        <p className="mt-1.5 rounded-sm bg-neon/8 px-2 py-1.5 text-fg">
+                          <span className="font-semibold text-neon">Tip:</span> {a.tip}
+                        </p>
+                      ) : null}
                       {question.explanation ? (
                         <p className="mt-1.5 text-fg">{question.explanation}</p>
                       ) : null}
@@ -966,6 +1026,16 @@ export function ExamView({
       </div>
       <div className="shrink-0 border-t border-white/[0.08] bg-bg px-4 pt-2.5 pb-[18px]">
         <div className="mx-auto max-w-2xl">
+          {!ok && reviewFromExam(paper.questions, answers, QUICK_REVIEW_COUNT) ? (
+            <button
+              type="button"
+              className="g-btn primary mb-2 w-full text-xs tracking-[0.08em]"
+              onClick={beginQuickReview}
+            >
+              <RotateCcw className="size-[13px]" strokeWidth={2} />
+              Repaso del error ({Math.min(QUICK_REVIEW_COUNT, toReview)} preguntas)
+            </button>
+          ) : null}
           {mistakeButtonLabel(mistakeCount) ? (
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -987,7 +1057,7 @@ export function ExamView({
             </div>
           ) : (
             <>
-              <p className="mb-2 text-center text-xs text-faint">{EMPTY_MISTAKES}</p>
+              {!ok ? null : <p className="mb-2 text-center text-xs text-faint">{EMPTY_MISTAKES}</p>}
               <button
                 type="button"
                 className="g-btn primary w-full text-xs tracking-[0.08em]"
@@ -1005,14 +1075,9 @@ export function ExamView({
 }
 
 function Mark({ verdict }: { verdict: ExamAnswer["verdict"] }) {
-  const tone =
-    verdict === "correcta"
-      ? { c: "#3ecf8e", label: "Correcta" }
-      : verdict === "parcial"
-        ? { c: "#f0b43e", label: "Parcial" }
-        : verdict === "incorrecta"
-          ? { c: "#e85d4c", label: "Incorrecta" }
-          : { c: "#8d8d8a", label: "Sin corregir" };
+  const tone = verdict
+    ? { c: RUBRIC[verdict].color, label: RUBRIC[verdict].label }
+    : { c: "#8d8d8a", label: "Sin corregir" };
   const Icon = verdict === "correcta" ? Check : verdict === "incorrecta" ? X : Minus;
   return (
     <span

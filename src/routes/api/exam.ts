@@ -6,6 +6,7 @@ import {
   parseExamOutput,
   type ExamPaper,
 } from "@/lib/exam";
+import { globalBudgetAllows, requireDeviceAccess } from "@/lib/access.server";
 import { runIfWithinQuota } from "@/lib/rate-limit.server";
 import { examSystemPrompt } from "@/lib/tutor.server";
 import { structuredCall, UpstreamError } from "@/lib/xai.server";
@@ -20,6 +21,9 @@ export const Route = createFileRoute("/api/exam")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const access = await requireDeviceAccess(request);
+        if (!access.ok) return access.response;
+
         let payload: unknown;
         try {
           payload = await request.json();
@@ -30,12 +34,20 @@ export const Route = createFileRoute("/api/exam")({
         if (!checked.ok) return Response.json({ error: checked.error }, { status: 400 });
         const exam = checked.request;
 
+        if (!globalBudgetAllows("exam")) {
+          return Response.json(
+            { error: "NEXO alcanzó el tope general de exámenes de hoy. Probá mañana." },
+            { status: 429 },
+          );
+        }
+
         return runIfWithinQuota(
           request,
           {
             weight: EXAM_WEIGHT,
             bucket: "exam",
-            message: "Demasiados pedidos seguidos. Esperá un minuto y armá el examen de nuevo.",
+            deviceKey: access.deviceKey,
+            message: "Llegaste al límite gratis de hoy (5 exámenes). Mañana se renueva el cupo.",
           },
           async () => {
             const apiKey = process.env.XAI_API_KEY;

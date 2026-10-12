@@ -3,6 +3,8 @@ import { ChevronLeft, Settings } from "lucide-react";
 import { useProgressStore } from "@/lib/progress-store";
 import { useSettingsStore } from "@/lib/settings-store";
 import type { ExplainDepth, ReplyMode, TextSize, ThemeId } from "@/lib/settings";
+import { GOAL_CHOICES, type GoalMinutes } from "@/lib/study-goal";
+import { useGoalStore } from "@/lib/study-store";
 
 const THEME_OPTIONS: { id: ThemeId; label: string }[] = [
   { id: "oscuro", label: "Oscuro" },
@@ -26,13 +28,22 @@ const REPLY_OPTIONS: { id: ReplyMode; label: string }[] = [
   { id: "pasos", label: "Pasos" },
   { id: "preguntas", label: "Preguntas" },
   { id: "examen", label: "Examen" },
+  { id: "guiado", label: "Guiado" },
+  { id: "oral", label: "Oral" },
+  { id: "profe", label: "Profe (oral)" },
 ];
+
+const GOAL_OPTIONS = GOAL_CHOICES.map((m) => ({
+  id: String(m) as `${GoalMinutes}`,
+  label: `${m} min`,
+}));
 
 export function SettingsView({ onBack, status }: { onBack: () => void; status: ReactNode }) {
   const theme = useSettingsStore((state) => state.theme);
   const text = useSettingsStore((state) => state.text);
   const explain = useSettingsStore((state) => state.explain);
   const reply = useSettingsStore((state) => state.reply);
+  const goal = useGoalStore((state) => state.goal.goal);
 
   return (
     <>
@@ -75,7 +86,8 @@ export function SettingsView({ onBack, status }: { onBack: () => void; status: R
             options={THEME_OPTIONS}
             onChange={(id) => {
               useSettingsStore.getState().setTheme(id);
-              if (id === "claro") useProgressStore.getState().record({ kind: "mark", mark: "claro" });
+              if (id === "claro")
+                useProgressStore.getState().record({ kind: "mark", mark: "claro" });
             }}
           />
           <ChoiceGroup
@@ -88,19 +100,34 @@ export function SettingsView({ onBack, status }: { onBack: () => void; status: R
           />
           <ChoiceGroup
             legend="Cómo explica"
-            hint="Simple: frases cortas y un ejemplo de todos los días o de un juego. A fondo: los límites, el error típico y un poco más de profundidad."
+            hint="Simple: pocas frases cortas (ideal en el celular) y un ejemplo. A fondo: los límites, el error típico y más profundidad. En el celular NEXO prioriza respuestas cortas salvo que elijas A fondo."
             name="explica"
             value={explain}
             options={EXPLAIN_OPTIONS}
-            onChange={(id) => useSettingsStore.getState().setExplain(id)}
+            onChange={(id) => {
+              try {
+                localStorage.setItem("nexo-explain-touched", "1");
+              } catch {
+                // ignore
+              }
+              useSettingsStore.getState().setExplain(id);
+            }}
           />
           <ChoiceGroup
             legend="Modo de respuesta"
-            hint="Normal no cambia cómo responde. Pasos numera. Preguntas hace una pregunta antes de explicar. Examen corrige corto, como una prueba."
+            hint="Normal no cambia cómo responde. Pasos numera. Preguntas hace una pregunta antes de explicar. Examen corrige corto. Guiado es estudio socrático suave: primero pregunta qué sabés. Oral explica como lo dirías en un examen oral. Profe te toma oral: una pregunta por vez y te corrige con Bien, A medias o Mal."
             name="modo"
             value={reply}
             options={REPLY_OPTIONS}
             onChange={(id) => useSettingsStore.getState().setReply(id)}
+          />
+          <ChoiceGroup
+            legend="Meta diaria de estudio"
+            hint="Cuenta el tiempo que usás NEXO con la pantalla abierta (se pausa si no tocás nada por 3 minutos). Cumplir la meta suma un día a tu racha de estudio. Gratis, sin pagos."
+            name="meta"
+            value={String(goal) as `${GoalMinutes}`}
+            options={GOAL_OPTIONS}
+            onChange={(id) => useGoalStore.getState().setGoal(Number(id))}
           />
           <p className="text-xs leading-relaxed text-faint">
             NEXO manda esta preferencia con cada pregunta del chat. No hace falta una cuenta y no se
@@ -136,7 +163,9 @@ function ChoiceGroup<T extends string>({
         className="grid gap-2"
         style={{
           gridTemplateColumns:
-            options.length > 3 ? "repeat(2, minmax(0, 1fr))" : `repeat(${options.length}, minmax(0, 1fr))`,
+            options.length > 3
+              ? "repeat(2, minmax(0, 1fr))"
+              : `repeat(${options.length}, minmax(0, 1fr))`,
         }}
       >
         {options.map((option) => {

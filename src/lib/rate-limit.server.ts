@@ -16,7 +16,9 @@
  *
  * Grok host (VERCEL unset and no DATABASE_URL): there is no platform IP and no
  * shared store. A best-effort in-memory cap still applies the same minute
- * window and daily budgets so the app stays up. See `tooManyInMemory`.
+ * window and daily budgets so the app stays up. When Stage A passes a
+ * `deviceKey` (hash of X-Nexo-Device), hits are keyed per device; otherwise
+ * they share one process bucket. See `tooManyInMemory`.
  * On Vercel without DATABASE_URL the call still fails closed: a per-instance
  * map would not be the shared limit that host is supposed to enforce.
  *
@@ -69,15 +71,17 @@ let warned = false;
 
 type MemoryScope = "minute" | "chat" | "exam";
 type MemoryHit = { at: number; scope: MemoryScope };
+/** Process-wide fallback key when no device token is present. */
+const SHARED_MEMORY_KEY = "__shared__";
 
 /**
  * Best-effort cap for the Grok host only (no VERCEL, no DATABASE_URL).
- * One bucket for the whole process: there is no trustworthy client IP, and
- * a client-supplied X-Forwarded-For is not a key, so spoofing it does not
- * add quota. This cap resets if the server restarts and is not shared across
- * instances, so it is NOT a hard billing cap.
+ * Stage A keys buckets by `deviceKey` (hash of the device token) so each
+ * unlocked device gets its own 40/5 daily budget. Without a device key the
+ * old shared process bucket still applies. Resets on restart; not shared
+ * across instances — NOT a hard billing cap.
  */
-let memoryHits: MemoryHit[] = [];
+const memoryByDevice = new Map<string, MemoryHit[]>();
 let nowForTests: (() => number) | null = null;
 
 export function setRateLimitNowForTests(now: (() => number) | null) {
@@ -85,25 +89,30 @@ export function setRateLimitNowForTests(now: (() => number) | null) {
 }
 
 export function resetRateLimitMemoryForTests() {
-  memoryHits = [];
+  memoryByDevice.clear();
 }
 
 function nowMs() {
   return nowForTests ? nowForTests() : Date.now();
 }
 
-function tooManyInMemory(weight: number, bucket: RateBucket) {
+function tooManyInMemory(weight: number, bucket: RateBucket, deviceKey?: string | null) {
+  const key = deviceKey && deviceKey.length >= 8 ? deviceKey : SHARED_MEMORY_KEY;
   const now = nowMs();
   const dayCutoff = now - DAY_SECONDS * 1000;
-  memoryHits = memoryHits.filter((hit) => hit.at > dayCutoff);
+  let memoryHits = (memoryByDevice.get(key) ?? []).filter((hit) => hit.at > dayCutoff);
   const daily = dailyBudget(bucket);
   const recent = memoryHits.filter(
     (hit) => hit.scope === "minute" && hit.at > now - WINDOW_MS,
   ).length;
   const dayN = memoryHits.filter((hit) => hit.scope === daily.scope).length;
-  if (recent + weight > MAX_HITS || dayN + 1 > daily.max) return true;
+  if (recent + weight > MAX_HITS || dayN + 1 > daily.max) {
+    memoryByDevice.set(key, memoryHits);
+    return true;
+  }
   for (let i = 0; i < weight; i++) memoryHits.push({ at: now, scope: "minute" });
   memoryHits.push({ at: now, scope: daily.scope });
+  memoryByDevice.set(key, memoryHits);
   return false;
 }
 
@@ -206,13 +215,16 @@ export async function tooManyRequests(
   ip: string | null,
   weight = 1,
   bucket: RateBucket = "chat",
+  deviceKey?: string | null,
 ): Promise<boolean> {
   const hits = Math.max(1, Math.min(MAX_HITS, Math.floor(weight) || 1));
   if (!databaseUrl() && process.env.VERCEL !== "1") {
-    return tooManyInMemory(hits, bucket);
+    return tooManyInMemory(hits, bucket, deviceKey);
   }
   if (!ip || !databaseUrl()) return true;
   try {
+    // Durable path still keys by platform IP. deviceKey is ignored there until
+    // a later stage stores per-user rows in Postgres.
     return await withTimeout(tooManyInDb(ip, hits, bucket), DB_TIMEOUT_MS);
   } catch (error) {
     if (!warned) {
@@ -230,13 +242,20 @@ export async function tooManyRequests(
  */
 export async function runIfWithinQuota(
   request: Request,
-  options: { weight?: number; bucket?: RateBucket; message: string },
+  options: {
+    weight?: number;
+    bucket?: RateBucket;
+    message: string;
+    /** Stage A: hash of X-Nexo-Device for per-device in-memory caps on Grok. */
+    deviceKey?: string | null;
+  },
   call: () => Promise<Response>,
 ): Promise<Response> {
   const limited = await tooManyRequests(
     clientIp(request),
     options.weight ?? 1,
     options.bucket ?? "chat",
+    options.deviceKey,
   );
   if (limited) return Response.json({ error: options.message }, { status: 429 });
   return call();
