@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import type { DocPayload } from "@/lib/document";
+import type { SubjectChoice } from "@/lib/subjects";
 import type { Level, Mode } from "@/lib/tutor";
 
 /** What the chat bubble shows for an attached document. */
@@ -31,6 +32,8 @@ export type Thread = {
   updatedAt: number;
   /** Active document of the conversation, sent as context with every question. */
   doc?: ThreadDoc;
+  /** School subject picked when the conversation started (2.7), restored when it is reopened. */
+  subject?: SubjectChoice;
 };
 
 type ChatState = {
@@ -43,7 +46,7 @@ type ChatState = {
   openFresh: () => void;
   select: (id: string) => void;
   remove: (id: string) => void;
-  ensureThread: (title: string) => string;
+  ensureThread: (title: string, subject?: SubjectChoice) => string;
   appendMessage: (threadId: string, message: ChatMessage) => void;
   patchMessage: (threadId: string, messageId: string, content: string) => void;
   setSources: (threadId: string, messageId: string, sources: string[]) => void;
@@ -176,7 +179,7 @@ export const useChatStore = create<ChatState>()(
           threads: state.threads.filter((thread) => thread.id !== id),
           activeId: state.activeId === id ? null : state.activeId,
         })),
-      ensureThread: (title) => {
+      ensureThread: (title, subject) => {
         const current = get().activeId;
         if (current && get().threads.some((thread) => thread.id === current)) return current;
         const id = crypto.randomUUID();
@@ -187,6 +190,7 @@ export const useChatStore = create<ChatState>()(
           level: get().level,
           messages: [],
           updatedAt: Date.now(),
+          ...(subject ? { subject } : {}),
         };
         set((state) => ({
           activeId: id,

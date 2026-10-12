@@ -19,6 +19,9 @@ function isText(file: File) {
   return file.type.startsWith("text/") || /\.(txt|md|markdown)$/i.test(file.name);
 }
 
+/** Placeholder for a PDF page with no extractable text (a picture or a scan). */
+export const PAGE_NO_TEXT = "(sin texto legible: puede ser una imagen o un escaneo)";
+
 /** Collapses the whitespace pdf.js leaves between text runs. */
 export function tidy(text: string) {
   return text
@@ -38,7 +41,9 @@ export function joinPages(pages: string[], totalPages: number, maxChars = DOC_MA
   let used = 0;
   let truncated = totalPages > pages.length;
   for (let i = 0; i < pages.length; i += 1) {
-    const block = `${i === 0 ? "" : "\n\n"}[Página ${i + 1}]\n${pages[i]}`;
+    // An empty page (image, scan or drawing) is labelled so the tutor never fills it in.
+    const body = pages[i].trim() || PAGE_NO_TEXT;
+    const block = `${i === 0 ? "" : "\n\n"}[Página ${i + 1}]\n${body}`;
     if (text.length + block.length > maxChars) {
       const room = maxChars - text.length;
       if (room > 200) {

@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowUp,
   Camera,
+  CircleHelp,
+  History,
+  MessageSquarePlus,
   Check,
   Copy,
   FileText,
@@ -54,6 +57,9 @@ import { useChatStore, type ChatMessage, type DocMeta } from "@/lib/chat-store";
 import { describeDoc, type DocPayload } from "@/lib/document";
 import { DOC_ACCEPT, readDocument } from "@/lib/document-client";
 import { trimHistory } from "@/lib/history";
+import { lastQuestion, lastThread, recentThreads, subjectStarter, timeAgo } from "@/lib/resume";
+import { hasUncertainty, UNSURE_NOTICE } from "@/lib/uncertain";
+import { APP_VERSION } from "@/lib/version";
 import { prepareImage, type PreparedImage } from "@/lib/image-client";
 import { useCardsStore, useFavoritesStore, useProfileStore, useWeekStore } from "@/lib/local-store";
 import { useProgressStore } from "@/lib/progress-store";
@@ -226,6 +232,19 @@ export function NexoApp() {
   }, [theme, textSize]);
 
   const active = threads.find((thread) => thread.id === activeId) ?? null;
+
+  // 2.7: reopening a conversation from the history brings back its subject.
+  const activeSubject = active?.subject;
+  useEffect(() => {
+    if (activeSubject === undefined) return;
+    setSubject(activeSubject);
+    try {
+      if (activeSubject) localStorage.setItem("nexo-subject", activeSubject);
+      else localStorage.removeItem("nexo-subject");
+    } catch {
+      // ignore
+    }
+  }, [activeId, activeSubject]);
   const chatting = Boolean(active && active.messages.length > 0);
   // Older turns beyond the budget are not sent to the tutor; say so, quietly.
   const trimmed = active ? trimHistory(active.messages.filter(hasPayload)).dropped > 0 : false;
@@ -349,7 +368,7 @@ export function NexoApp() {
     stickRef.current = true;
 
     const store = useChatStore.getState();
-    const threadId = store.ensureThread(content || (doc ? doc.name : "Foto de ejercicio"));
+    const threadId = store.ensureThread(content || (doc ? doc.name : "Foto de ejercicio"), subject);
     const docMeta: DocMeta | undefined = doc
       ? {
           name: doc.name,
@@ -519,6 +538,48 @@ export function NexoApp() {
     setDrawer(false);
     setError(null);
     setView("chat");
+  }
+
+  function chooseSubject(id: SubjectChoice) {
+    setSubject(id);
+    try {
+      if (id) localStorage.setItem("nexo-subject", id);
+      else localStorage.removeItem("nexo-subject");
+    } catch {
+      // ignore
+    }
+  }
+
+  /** 2.7: reopen an earlier conversation exactly where it was (no chat is spent). */
+  function resumeThread(id: string) {
+    const thread = useChatStore.getState().threads.find((item) => item.id === id);
+    if (!thread) return;
+    useChatStore.getState().select(id);
+    if (thread.subject !== undefined) chooseSubject(thread.subject);
+    setDrawer(false);
+    setError(null);
+    setView("chat");
+    focusField();
+  }
+
+  /** 2.7: subject shortcut. New chat focused on that subject; nothing is sent until you write. */
+  function startSubject(id: SubjectChoice) {
+    chooseSubject(id);
+    useChatStore.getState().openFresh();
+    setDrawer(false);
+    setError(null);
+    setView("chat");
+    setDraft(subjectStarter(id));
+    focusField();
+  }
+
+  function focusField() {
+    window.setTimeout(() => {
+      const node = fieldRef.current;
+      if (!node) return;
+      node.focus();
+      node.setSelectionRange(node.value.length, node.value.length);
+    }, 60);
   }
 
   function continueTopic(title: string) {
@@ -774,15 +835,9 @@ export function NexoApp() {
                   onSettings={() => setView("settings")}
                   onOral={startOral}
                   subject={subject}
-                  onSubject={(id) => {
-                    setSubject(id);
-                    try {
-                      if (id) localStorage.setItem("nexo-subject", id);
-                      else localStorage.removeItem("nexo-subject");
-                    } catch {
-                      // ignore
-                    }
-                  }}
+                  onSubject={chooseSubject}
+                  onStartSubject={startSubject}
+                  onResume={resumeThread}
                   daily={daily}
                   dailyDone={dailyDone}
                   onDaily={() => {
@@ -1366,7 +1421,7 @@ function Sidebar({
           </details>
           <p className="px-1 pt-3 text-xs leading-relaxed text-faint">
             Gratis · {FREE_CAPS.chats} chats y {FREE_CAPS.exams} exámenes por día en este
-            dispositivo. El historial vive solo en este navegador.
+            dispositivo. El historial vive solo en este navegador. · NEXO {APP_VERSION}
           </p>
         </div>
 
@@ -1453,6 +1508,8 @@ function Empty({
   onOral,
   subject,
   onSubject,
+  onStartSubject,
+  onResume,
   daily,
   dailyDone,
   onDaily,
@@ -1466,6 +1523,8 @@ function Empty({
   onOral: () => void;
   subject: SubjectChoice;
   onSubject: (id: SubjectChoice) => void;
+  onStartSubject: (id: SubjectChoice) => void;
+  onResume: (id: string) => void;
   daily: DailyChallenge | null;
   dailyDone: boolean;
   onDaily: () => void;
@@ -1490,6 +1549,7 @@ function Empty({
       <p className="rise rise-2 mt-3 text-base leading-relaxed text-muted">
         Elige una misión rápida o escribe la tuya.
       </p>
+      <ResumeCard onResume={onResume} />
       {daily ? (
         <button
           type="button"
@@ -1537,10 +1597,22 @@ function Empty({
           ))}
         </div>
         {subject ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onStartSubject(subject)}
+              className="tap chip flex h-10 items-center gap-2 rounded-sm border border-neon/50 bg-neon/8 px-3 text-sm text-fg"
+            >
+              <MessageSquarePlus className="size-4 text-neon" strokeWidth={1.75} />
+              Nuevo chat de {subjectLabel(subject)}
+            </button>
+            <span className="text-xs text-faint">El tutor responde enfocado en esa materia.</span>
+          </div>
+        ) : (
           <p className="mt-1.5 text-xs text-faint">
-            Tono: {subjectLabel(subject)}. Solo en este dispositivo.
+            Tocá una materia para abrir un chat enfocado en ella.
           </p>
-        ) : null}
+        )}
       </div>
       <div className="rise rise-3 mt-8 mb-2.5 flex items-center justify-between gap-2">
         <p className="font-mono text-xs tracking-widest text-faint uppercase">Misiones rápidas</p>
@@ -1616,6 +1688,58 @@ function Empty({
       <div className="rise rise-3 mt-6">
         <Donate variant="empty" />
       </div>
+    </div>
+  );
+}
+
+/** 2.7: "Seguir donde quedaste" + the last conversations, one tap to reopen. */
+function ResumeCard({ onResume }: { onResume: (id: string) => void }) {
+  const threads = useChatStore((state) => state.threads);
+  const last = lastThread(threads);
+  if (!last) return null;
+  const others = recentThreads(threads, 4).filter((thread) => thread.id !== last.id);
+  const question = lastQuestion(last);
+  const tag = last.subject ? subjectLabel(last.subject) : null;
+  return (
+    <div className="rise rise-2 mt-6">
+      <button
+        type="button"
+        onClick={() => onResume(last.id)}
+        className="tap chip flex w-full items-center gap-3 rounded-sm border border-neon/45 bg-neon/8 px-3 py-3 text-left"
+      >
+        <History className="size-5 shrink-0 text-neon" strokeWidth={1.75} />
+        <span className="min-w-0 flex-1">
+          <span className="block font-mono text-[10px] tracking-widest text-neon uppercase">
+            Seguir donde quedaste · {timeAgo(last.updatedAt)}
+            {tag ? ` · ${tag}` : ""}
+          </span>
+          <span className="mt-0.5 block truncate text-sm text-fg">{last.title}</span>
+          {question && question !== last.title ? (
+            <span className="block truncate text-xs text-faint">Último: {question}</span>
+          ) : null}
+        </span>
+        <span className="shrink-0 font-mono text-[10px] tracking-wider text-faint uppercase">
+          Seguir
+        </span>
+      </button>
+      {others.length > 0 ? (
+        <ul className="mt-1.5 flex flex-col">
+          {others.map((thread) => (
+            <li key={thread.id}>
+              <button
+                type="button"
+                onClick={() => onResume(thread.id)}
+                className="tap flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-muted hover:bg-bg-soft hover:text-fg"
+              >
+                <span className="min-w-0 flex-1 truncate">{thread.title}</span>
+                <span className="shrink-0 font-mono text-[10px] text-faint">
+                  {timeAgo(thread.updatedAt)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -1752,6 +1876,12 @@ function Message({
           </p>
         )}
         {streaming && message.content ? <span className="caret" aria-hidden="true" /> : null}
+        {!streaming && hasUncertainty(message.content) ? (
+          <p className="mt-3 flex items-start gap-2 rounded-sm border border-accent-r/40 bg-accent-r/8 px-3 py-2 text-xs leading-relaxed text-fg">
+            <CircleHelp className="mt-0.5 size-4 shrink-0 text-accent-r" strokeWidth={1.75} />
+            {UNSURE_NOTICE}
+          </p>
+        ) : null}
         {message.sources && message.sources.length > 0 ? (
           <ul className="mt-4 flex flex-wrap gap-1.5">
             {message.sources.map((url) => (

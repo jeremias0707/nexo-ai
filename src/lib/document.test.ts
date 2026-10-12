@@ -93,6 +93,9 @@ describe("documents", () => {
     assert.equal(cut.truncated, true);
     assert.ok(cut.text.length <= 1000);
     assert.equal(cut.pages, 2);
+    const blank = joinPages(["uno", "  ", "tres"], 3);
+    assert.ok(blank.text.includes("[Página 2]\n(sin texto legible"));
+    assert.equal(blank.pages, 3);
     assert.equal(tidy("  hola   mundo \n\n\n\n chau "), "hola mundo\n\nchau");
   });
 });
@@ -119,5 +122,19 @@ describe("voice", () => {
     assert.ok(spoken.includes("igual a"));
     assert.ok(spoken.includes("link"));
     assert.equal(spoken.includes("https"), false);
+  });
+});
+
+describe("citas (2.7)", () => {
+  it("tells the model which pages exist and to cite only those", () => {
+    const ctx = documentContext(doc);
+    assert.ok(ctx.includes("están las páginas 1 a 2"));
+    assert.ok(ctx.includes("(pág. N)"));
+  });
+
+  it("text notes have no pages: cite sections instead", () => {
+    const ctx = documentContext({ name: "apunte.txt", kind: "text", truncated: false, text: "Unidad 1" });
+    assert.ok(ctx.includes("no cites páginas"));
+    assert.ok(!ctx.includes("[Página N]"));
   });
 });
