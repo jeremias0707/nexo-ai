@@ -182,7 +182,15 @@ async function downloadSvg(svg: SVGSVGElement, base: string) {
   saveBlob(new Blob([source], { type: "image/svg+xml" }), `${base}.svg`);
 }
 
-function ZoomModal({ markup, title, onClose }: { markup: string; title: string; onClose: () => void }) {
+function ZoomModal({
+  markup,
+  title,
+  onClose,
+}: {
+  markup: string;
+  title: string;
+  onClose: () => void;
+}) {
   const [zoom, setZoom] = useState(1);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
@@ -197,18 +205,42 @@ function ZoomModal({ markup, title, onClose }: { markup: string; title: string; 
     };
   }, []);
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex flex-col bg-bg" role="dialog" aria-modal="true" aria-label={title}>
+    <div
+      className="fixed inset-0 z-[100] flex flex-col bg-bg"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
       <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
-        <span className="truncate font-display text-xs tracking-widest text-neon uppercase">{title}</span>
+        <span className="truncate font-display text-xs tracking-widest text-neon uppercase">
+          {title}
+        </span>
         <span className="flex items-center gap-1">
-          <button type="button" className="tap hud-btn flex size-11 items-center justify-center" aria-label="Alejar" onClick={() => setZoom((z) => Math.max(0.5, z - 0.5))}>
+          <button
+            type="button"
+            className="tap hud-btn flex size-11 items-center justify-center"
+            aria-label="Alejar"
+            onClick={() => setZoom((z) => Math.max(0.5, z - 0.5))}
+          >
             <Minus className="size-4" strokeWidth={1.75} />
           </button>
-          <span className="w-12 text-center font-mono text-xs text-muted">{Math.round(zoom * 100)}%</span>
-          <button type="button" className="tap hud-btn flex size-11 items-center justify-center" aria-label="Acercar" onClick={() => setZoom((z) => Math.min(4, z + 0.5))}>
+          <span className="w-12 text-center font-mono text-xs text-muted">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            type="button"
+            className="tap hud-btn flex size-11 items-center justify-center"
+            aria-label="Acercar"
+            onClick={() => setZoom((z) => Math.min(4, z + 0.5))}
+          >
             <Plus className="size-4" strokeWidth={1.75} />
           </button>
-          <button type="button" className="tap hud-btn flex size-11 items-center justify-center" aria-label="Cerrar" onClick={onClose}>
+          <button
+            type="button"
+            className="tap hud-btn flex size-11 items-center justify-center"
+            aria-label="Cerrar"
+            onClick={onClose}
+          >
             <X className="size-4" strokeWidth={1.75} />
           </button>
         </span>
@@ -275,7 +307,9 @@ function DiagramFrame({
       <div ref={ref} className="diagram-svg overflow-x-auto p-3">
         {children}
       </div>
-      {zoomed ? <ZoomModal markup={zoomed} title={title ?? label} onClose={() => setZoomed(null)} /> : null}
+      {zoomed ? (
+        <ZoomModal markup={zoomed} title={title ?? label} onClose={() => setZoomed(null)} />
+      ) : null}
     </figure>
   );
 }
@@ -315,7 +349,8 @@ export function MermaidDiagram({ code }: { code: string }) {
 
 export function GraficoBlock({ code }: { code: string }) {
   const parsed = useMemo(() => parseGrafico(code), [code]);
-  if (!parsed.ok) return <CodeFallback code={code} error={`No pude armar este gráfico: ${parsed.error}`} />;
+  if (!parsed.ok)
+    return <CodeFallback code={code} error={`No pude armar este gráfico: ${parsed.error}`} />;
   return (
     <DiagramFrame label="Gráfico" title={parsed.spec.title} fileBase="nexo-grafico">
       <ChartView spec={parsed.spec} />
@@ -332,7 +367,22 @@ export function DiagramPending({ label }: { label: string }) {
   );
 }
 
-export function DiagramBlock({ kind, code, pending }: { kind: DiagramKind; code: string; pending?: boolean }) {
-  if (pending) return <DiagramPending label={kind === "mermaid" ? "Preparando diagrama" : "Preparando gráfico"} />;
-  return kind === "mermaid" ? <MermaidDiagram code={code.trim()} /> : <GraficoBlock code={code.trim()} />;
+export function DiagramBlock({
+  kind,
+  code,
+  pending,
+}: {
+  kind: DiagramKind;
+  code: string;
+  pending?: boolean;
+}) {
+  if (pending)
+    return (
+      <DiagramPending label={kind === "mermaid" ? "Preparando diagrama" : "Preparando gráfico"} />
+    );
+  return kind === "mermaid" ? (
+    <MermaidDiagram code={code.trim()} />
+  ) : (
+    <GraficoBlock code={code.trim()} />
+  );
 }

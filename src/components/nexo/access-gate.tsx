@@ -1,10 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Mark } from "@/components/nexo/mark";
-import {
-  FREE_CAPS,
-  readDeviceToken,
-  redeemAccess,
-} from "@/lib/access-client";
+import { FREE_CAPS, readDeviceToken, redeemAccess } from "@/lib/access-client";
 
 type GateState = "checking" | "needs" | "ready" | "blocked";
 
@@ -104,8 +100,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
       <h1 className="font-serif text-3xl tracking-tight text-paper">NEXO AI</h1>
       <p className="mt-3 text-sm leading-relaxed text-muted">
         Es gratis, con un tope diario por dispositivo: {FREE_CAPS.chats} chats y {FREE_CAPS.exams}{" "}
-        exámenes. Para cuidar el uso del modelo, pedí el código de acceso a quien te compartió
-        NEXO.
+        exámenes. Para cuidar el uso del modelo, pedí el código de acceso a quien te compartió NEXO.
       </p>
       <form className="mt-6 flex flex-col gap-3" onSubmit={onSubmit}>
         <label className="text-xs tracking-wide text-faint uppercase" htmlFor="nexo-access-code">

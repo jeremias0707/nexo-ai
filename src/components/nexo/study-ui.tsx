@@ -1,10 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { CalendarDays, Layers, Mic, Sparkles, Users, X } from "lucide-react";
+import { Layers, Mic, Sparkles, Users, X } from "lucide-react";
 import type { DraftCard } from "@/lib/flashcards";
 import { formatClassCode } from "@/lib/group";
 import { goalToday, lastWeek } from "@/lib/study-goal";
-import { countdownLine, todayIndex } from "@/lib/study-plan";
-import { useChatCardsStore, useGoalStore, useGroupStore, usePlanStore } from "@/lib/study-store";
+import { useChatCardsStore, useGoalStore, useGroupStore } from "@/lib/study-store";
 import { useToday } from "@/lib/use-progress";
 
 /** Ring + week strip for "Racha y metas" (home screen). */
@@ -84,35 +83,11 @@ export function GoalCard({ onSettings }: { onSettings?: () => void }) {
 }
 
 /** Small home cards for the plan and the class challenge (only when set up). */
-export function TodayCards({ onPlan, onGroup }: { onPlan: () => void; onGroup: () => void }) {
-  const plan = usePlanStore((state) => state.plan);
+export function TodayCards({ onGroup }: { onPlan?: () => void; onGroup: () => void }) {
   const code = useGroupStore((state) => state.code);
   const results = useGroupStore((state) => state.results);
   const today = useToday();
   const cards: ReactNode[] = [];
-  if (plan) {
-    const index = todayIndex(plan, today);
-    const day = index >= 0 && index < plan.days.length ? plan.days[index] : null;
-    const done = day ? day.tasks.filter((t) => t.done).length : 0;
-    cards.push(
-      <button
-        key="plan"
-        type="button"
-        onClick={onPlan}
-        className="tap chip flex w-full items-center gap-3 rounded-sm border border-line bg-bg-elev/70 px-3 py-2.5 text-left"
-      >
-        <CalendarDays className="size-5 shrink-0 text-neon" strokeWidth={1.75} />
-        <span className="min-w-0 flex-1">
-          <span className="block font-mono text-[10px] tracking-widest text-neon uppercase">
-            Plan · {plan.subject}
-          </span>
-          <span className="block truncate text-sm text-fg">
-            {day ? `Hoy: ${done}/${day.tasks.length} tareas` : countdownLine(plan.examDay, today)}
-          </span>
-        </span>
-      </button>,
-    );
-  }
   if (code) {
     const doneToday = results[today]?.code === code;
     cards.push(

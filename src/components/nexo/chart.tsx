@@ -1,5 +1,12 @@
 import type { ChartSpec, FunctionSpec, PieSpec, SeriesSpec } from "@/lib/grafico";
-import { CHART_COLORS, autoRange, compileExpr, formatTick, niceTicks, sampleFunction } from "@/lib/grafico";
+import {
+  CHART_COLORS,
+  autoRange,
+  compileExpr,
+  formatTick,
+  niceTicks,
+  sampleFunction,
+} from "@/lib/grafico";
 
 /** Pure SVG charts for ```grafico blocks (no chart library, nothing to download). */
 
@@ -48,13 +55,16 @@ function Legend({ items, y }: { items: { name: string; color: string }[]; y: num
 }
 
 function FunctionChart({ spec }: { spec: FunctionSpec }) {
-  const curves = spec.exprs.map((item) => sampleFunction(compileExpr(item.expr), spec.xmin, spec.xmax));
+  const curves = spec.exprs.map((item) =>
+    sampleFunction(compileExpr(item.expr), spec.xmin, spec.xmax),
+  );
   const auto = autoRange(curves.flat(2).map((point) => point.y));
   const ymin = spec.ymin ?? auto[0];
   const ymax = spec.ymax ?? auto[1];
   const legendRows = spec.exprs.length > 0 ? 22 : 0;
   const plot = { x0: PAD.l, x1: W - PAD.r, y0: PAD.t, y1: H - PAD.b - legendRows };
-  const sx = (x: number) => plot.x0 + ((x - spec.xmin) / (spec.xmax - spec.xmin)) * (plot.x1 - plot.x0);
+  const sx = (x: number) =>
+    plot.x0 + ((x - spec.xmin) / (spec.xmax - spec.xmin)) * (plot.x1 - plot.x0);
   const sy = (y: number) => plot.y1 - ((y - ymin) / (ymax - ymin)) * (plot.y1 - plot.y0);
   const xticks = niceTicks(spec.xmin, spec.xmax, 7);
   const yticks = niceTicks(ymin, ymax, 6);
@@ -82,24 +92,38 @@ function FunctionChart({ spec }: { spec: FunctionSpec }) {
           </text>
         </g>
       ))}
-      {ymin <= 0 && ymax >= 0 ? <line x1={plot.x0} x2={plot.x1} y1={sy(0)} y2={sy(0)} stroke={AXIS} /> : null}
+      {ymin <= 0 && ymax >= 0 ? (
+        <line x1={plot.x0} x2={plot.x1} y1={sy(0)} y2={sy(0)} stroke={AXIS} />
+      ) : null}
       {spec.xmin <= 0 && spec.xmax >= 0 ? (
         <line x1={sx(0)} x2={sx(0)} y1={plot.y0} y2={plot.y1} stroke={AXIS} />
       ) : null}
-      <g clipPath={`url(#${clipId})`} fill="none" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round">
+      <g
+        clipPath={`url(#${clipId})`}
+        fill="none"
+        strokeWidth={2.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      >
         {curves.map((segments, index) =>
           segments.map((segment, part) => (
             <polyline
               key={`${index}-${part}`}
               stroke={color(index)}
               points={segment
-                .map((point) => `${sx(point.x).toFixed(1)},${sy(Math.max(ymin - (ymax - ymin), Math.min(ymax + (ymax - ymin), point.y))).toFixed(1)}`)
+                .map(
+                  (point) =>
+                    `${sx(point.x).toFixed(1)},${sy(Math.max(ymin - (ymax - ymin), Math.min(ymax + (ymax - ymin), point.y))).toFixed(1)}`,
+                )
                 .join(" ")}
             />
           )),
         )}
       </g>
-      <Legend items={spec.exprs.map((item, index) => ({ name: item.name, color: color(index) }))} y={H - 10} />
+      <Legend
+        items={spec.exprs.map((item, index) => ({ name: item.name, color: color(index) }))}
+        y={H - 10}
+      />
     </Frame>
   );
 }
@@ -142,7 +166,9 @@ function SeriesChart({ spec }: { spec: SeriesSpec }) {
           fill={TEXT}
           textAnchor={many ? "end" : "middle"}
           transform={
-            many ? `translate(${cx(i)} ${plot.y1 + 14}) rotate(-35)` : `translate(${cx(i)} ${plot.y1 + 18})`
+            many
+              ? `translate(${cx(i)} ${plot.y1 + 14}) rotate(-35)`
+              : `translate(${cx(i)} ${plot.y1 + 18})`
           }
         >
           {label.length > 12 ? `${label.slice(0, 11)}…` : label}
@@ -167,7 +193,13 @@ function SeriesChart({ spec }: { spec: SeriesSpec }) {
                     <title>{`${s.name} · ${spec.labels[i]}: ${formatTick(v)}${unit}`}</title>
                   </rect>
                   {spec.series.length === 1 && spec.labels.length <= 10 ? (
-                    <text x={x + barWidth / 2} y={top - 6} fontSize={14} fill="#f4f4f2" textAnchor="middle">
+                    <text
+                      x={x + barWidth / 2}
+                      y={top - 6}
+                      fontSize={14}
+                      fill="#f4f4f2"
+                      textAnchor="middle"
+                    >
                       {formatTick(v)}
                     </text>
                   ) : null}
@@ -185,7 +217,15 @@ function SeriesChart({ spec }: { spec: SeriesSpec }) {
                 points={s.values.map((v, i) => `${cx(i).toFixed(1)},${sy(v).toFixed(1)}`).join(" ")}
               />
               {s.values.map((v, i) => (
-                <circle key={i} cx={cx(i)} cy={sy(v)} r={3.5} fill="#0e0e0e" stroke={color(si)} strokeWidth={2}>
+                <circle
+                  key={i}
+                  cx={cx(i)}
+                  cy={sy(v)}
+                  r={3.5}
+                  fill="#0e0e0e"
+                  stroke={color(si)}
+                  strokeWidth={2}
+                >
                   <title>{`${s.name} · ${spec.labels[i]}: ${formatTick(v)}${unit}`}</title>
                 </circle>
               ))}
@@ -193,7 +233,14 @@ function SeriesChart({ spec }: { spec: SeriesSpec }) {
           ))}
       {legend ? (
         <>
-          <Legend items={spec.series.length > 1 ? spec.series.map((s, i) => ({ name: s.name, color: color(i) })) : []} y={H - 10} />
+          <Legend
+            items={
+              spec.series.length > 1
+                ? spec.series.map((s, i) => ({ name: s.name, color: color(i) }))
+                : []
+            }
+            y={H - 10}
+          />
           {spec.source ? (
             <text x={W - PAD.r} y={H - 10} fontSize={12} fill={TEXT} textAnchor="end">
               Fuente: {spec.source}
@@ -216,7 +263,8 @@ function PieChart({ spec }: { spec: PieSpec }) {
     angle += sweep;
     return { v, i, start, end: angle, sweep };
   });
-  const pt = (a: number, radius = r) => `${(c.x + Math.cos(a) * radius).toFixed(2)},${(c.y + Math.sin(a) * radius).toFixed(2)}`;
+  const pt = (a: number, radius = r) =>
+    `${(c.x + Math.cos(a) * radius).toFixed(2)},${(c.y + Math.sin(a) * radius).toFixed(2)}`;
   const unit = spec.unit ? ` ${spec.unit}` : "";
   return (
     <Frame label={spec.title ?? "Gráfico de torta"}>
@@ -244,7 +292,9 @@ function PieChart({ spec }: { spec: PieSpec }) {
             <g key={s.i} transform={`translate(262 ${y})`}>
               <rect width={12} height={12} y={-10} rx={2} fill={color(s.i)} />
               <text x={20} fill="#f4f4f2">
-                {spec.labels[s.i].length > 16 ? `${spec.labels[s.i].slice(0, 15)}…` : spec.labels[s.i]}
+                {spec.labels[s.i].length > 16
+                  ? `${spec.labels[s.i].slice(0, 15)}…`
+                  : spec.labels[s.i]}
               </text>
               <text x={244} fill={TEXT} textAnchor="end">
                 {`${((s.v / total) * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`}

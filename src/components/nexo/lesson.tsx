@@ -5,7 +5,13 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { DiagramBlock } from "@/components/nexo/diagram";
 
-type HastNode = { type: string; value?: string; tagName?: string; properties?: Record<string, unknown>; children?: HastNode[] };
+type HastNode = {
+  type: string;
+  value?: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+  children?: HastNode[];
+};
 
 function hastText(node: HastNode | undefined): string {
   if (!node) return "";
@@ -30,8 +36,13 @@ function makeComponents(streaming: boolean): Components {
     ...components,
     pre: ({ node, children }) => {
       const diagram = diagramOf(node as HastNode | undefined);
-      if (diagram) return <DiagramBlock kind={diagram.kind} code={diagram.code} pending={streaming} />;
-      return <pre className="mt-3 overflow-x-auto rounded-md border border-line bg-bg-soft p-4">{children}</pre>;
+      if (diagram)
+        return <DiagramBlock kind={diagram.kind} code={diagram.code} pending={streaming} />;
+      return (
+        <pre className="mt-3 overflow-x-auto rounded-md border border-line bg-bg-soft p-4">
+          {children}
+        </pre>
+      );
     },
   };
 }
@@ -54,7 +65,12 @@ const components: Components = {
     <blockquote className="mt-3 border-l border-line-strong pl-4 text-muted">{children}</blockquote>
   ),
   a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noreferrer" className="underline decoration-line-strong underline-offset-4">
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="underline decoration-line-strong underline-offset-4"
+    >
       {children}
     </a>
   ),
@@ -63,12 +79,18 @@ const components: Components = {
     const text = String(children);
     const fenced = Boolean(className) || text.includes("\n");
     if (!fenced) {
-      return <code className="rounded-sm bg-bg-soft px-1.5 py-0.5 font-mono text-sm text-paper">{children}</code>;
+      return (
+        <code className="rounded-sm bg-bg-soft px-1.5 py-0.5 font-mono text-sm text-paper">
+          {children}
+        </code>
+      );
     }
     return <code className={`font-mono text-sm text-fg ${className ?? ""}`}>{children}</code>;
   },
   pre: ({ children }) => (
-    <pre className="mt-3 overflow-x-auto rounded-md border border-line bg-bg-soft p-4">{children}</pre>
+    <pre className="mt-3 overflow-x-auto rounded-md border border-line bg-bg-soft p-4">
+      {children}
+    </pre>
   ),
   hr: () => <hr className="my-6 border-line" />,
   table: ({ children }) => (
@@ -76,7 +98,9 @@ const components: Components = {
       <table className="w-full border-collapse text-left text-sm">{children}</table>
     </div>
   ),
-  th: ({ children }) => <th className="border-b border-line px-2 py-2 font-medium text-fg">{children}</th>,
+  th: ({ children }) => (
+    <th className="border-b border-line px-2 py-2 font-medium text-fg">{children}</th>
+  ),
   td: ({ children }) => <td className="border-b border-line px-2 py-2 text-muted">{children}</td>,
 };
 

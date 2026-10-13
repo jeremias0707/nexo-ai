@@ -119,7 +119,10 @@ export function ExamView({
   onStage,
   boot = "config",
   preset,
+  initialTopic = "",
 }: {
+  /** 3.0 plan: exam task opens the config with the subject filled in. */
+  initialTopic?: string;
   onStage?: (stage: string) => void;
   onClose: () => void;
   status: ReactNode;
@@ -131,7 +134,7 @@ export function ExamView({
 }) {
   const [stage, setStage] = useState<Stage>("config");
   const [config, setConfig] = useState<Config>({
-    topic: "",
+    topic: initialTopic,
     source: "tema",
     count: 10,
     difficulty: "media",

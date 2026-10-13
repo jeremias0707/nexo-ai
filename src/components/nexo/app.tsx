@@ -40,7 +40,7 @@ import {
   WeekView,
 } from "@/components/nexo/local-screens";
 import { SettingsView } from "@/components/nexo/settings";
-import { PlanView } from "@/components/nexo/plan";
+import { Plan3View, TodayPlanCard, type PlanTarget } from "@/components/nexo/plan3";
 import { CompareView } from "@/components/nexo/compare";
 import { GroupView } from "@/components/nexo/group";
 import { ExportView } from "@/components/nexo/export-view";
@@ -143,6 +143,7 @@ export function NexoApp() {
   const stopSpeakRef = useRef<(() => void) | null>(null);
   const [cardsDraft, setCardsDraft] = useState<CardsDraft | null>(null);
   const [kitPreset, setKitPreset] = useState<KitExamPreset | null>(null);
+  const [examTopic, setExamTopic] = useState("");
   const [compareSeed, setCompareSeed] = useState<{ answer: string; doc: DocPayload | null }>({
     answer: "",
     doc: null,
@@ -621,6 +622,14 @@ export function NexoApp() {
     );
   }
 
+  const planHandlers = {
+    onAsk: (prompt: string) => askFromTool(prompt, { fresh: true }),
+    onOpen: (target: PlanTarget, topic?: string) => {
+      setExamTopic(target === "exam" ? (topic ?? "") : "");
+      openView(target);
+    },
+  };
+
   function openView(next: View) {
     setDrawer(false);
     setView(next);
@@ -724,13 +733,10 @@ export function NexoApp() {
         ) : view === "settings" ? (
           <SettingsView onBack={() => setView("chat")} status={<HudStatus link={link} />} />
         ) : view === "plan" ? (
-          <PlanView
+          <Plan3View
             onBack={() => setView("chat")}
             status={<HudStatus link={link} />}
-            onAsk={(prompt, oral) => askFromTool(prompt, { oral, fresh: true })}
-            onOpen={openView}
-            lastAnswer={lastAnswer() || null}
-            online={link === "online"}
+            handlers={planHandlers}
           />
         ) : view === "compare" ? (
           <CompareView
@@ -792,6 +798,7 @@ export function NexoApp() {
             onClose={() => setView(view === "weakround" ? "weak" : "chat")}
             onStage={setExamStage}
             boot={view === "review" ? "review" : view === "weakround" ? "weak" : "config"}
+            initialTopic={view === "exam" ? examTopic : ""}
             status={<HudStatus link={link} />}
             online={link === "online"}
           />
@@ -888,6 +895,7 @@ export function NexoApp() {
                   onReview={() => setView("review")}
                   onWeak={() => setView("weak")}
                   onKit={() => setView("kit")}
+                  planHandlers={planHandlers}
                   onPlan={() => setView("plan")}
                   onGroup={() => setView("group")}
                   onSettings={() => setView("settings")}
@@ -1581,6 +1589,7 @@ function Empty({
   onReview,
   onWeak,
   onKit,
+  planHandlers,
   onPlan,
   onGroup,
   onSettings,
@@ -1598,6 +1607,10 @@ function Empty({
   onReview: () => void;
   onWeak: () => void;
   onKit: () => void;
+  planHandlers: {
+    onAsk: (prompt: string) => void;
+    onOpen: (target: PlanTarget, topic?: string) => void;
+  };
   onPlan: () => void;
   onGroup: () => void;
   onSettings: () => void;
@@ -1649,6 +1662,7 @@ function Empty({
           </span>
         </button>
       ) : null}
+      <TodayPlanCard onPlan={onPlan} handlers={planHandlers} />
       <GoalCard onSettings={onSettings} />
       <TodayCards onPlan={onPlan} onGroup={onGroup} />
       <div className="rise rise-2 mt-5">
