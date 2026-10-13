@@ -51,6 +51,17 @@ import {
   saveMistakes,
 } from "@/lib/mistakes";
 import { useMistakeCount } from "@/lib/use-mistakes";
+import {
+  currentSubject,
+  loadWeak,
+  pickRound,
+  recordWeak,
+  roundEvents,
+  roundFocus,
+  roundTopic,
+  type WeakEvent,
+  type WeakSpot,
+} from "@/lib/weak-spots";
 import { prepareImage, type PreparedImage } from "@/lib/image-client";
 import { deviceHeaders, clearDeviceToken } from "@/lib/access-client";
 import { DAILY, dayKey } from "@/lib/progress";
@@ -113,7 +124,7 @@ export function ExamView({
   status: ReactNode;
   online: boolean;
   /** "review" opens the saved-mistakes exam immediately (menu / home). */
-  boot?: "config" | "review";
+  boot?: "config" | "review" | "weak";
 }) {
   const [stage, setStage] = useState<Stage>("config");
   const [config, setConfig] = useState<Config>({
@@ -143,6 +154,8 @@ export function ExamView({
   const photoRef = useRef<HTMLInputElement>(null);
   const recordedRef = useRef(false);
   const [reviewing, setReviewing] = useState(false);
+  /** 3.0: topics of the adaptive round in progress (null = normal exam). */
+  const [weakRound, setWeakRound] = useState<WeakSpot[] | null>(null);
   const mistakeCount = useMistakeCount();
   const examsToday = useProgressStore((state) =>
     state.progress.daily.day === dayKey(new Date()) ? state.progress.daily.exams : 0,
@@ -151,6 +164,7 @@ export function ExamView({
   useEffect(() => {
     setShowTimer(localStorage.getItem(TIMER_KEY) !== "off");
     if (boot === "review") beginReview();
+    if (boot === "weak") void beginWeak();
     return () => abortRef.current?.abort();
     // boot is only read on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -166,10 +180,16 @@ export function ExamView({
     return () => window.clearInterval(timer);
   }, [stage, startedAt]);
 
-  const title = reviewing ? "Repaso de errores" : config.topic.trim() || paper?.title || "Examen";
-  const subtitle = reviewing
-    ? "Tus preguntas guardadas"
-    : `${title} · ${difficultyLabel(config.difficulty)}`;
+  const title = weakRound
+    ? "Repasar mis errores"
+    : reviewing
+      ? "Repaso de errores"
+      : config.topic.trim() || paper?.title || "Examen";
+  const subtitle = weakRound
+    ? "Ronda adaptada a tus puntos flojos"
+    : reviewing
+      ? "Tus preguntas guardadas"
+      : `${title} · ${difficultyLabel(config.difficulty)}`;
   const ready =
     online &&
     (config.source === "tema"
@@ -252,8 +272,23 @@ export function ExamView({
     setStage("question");
   }
 
-  async function start() {
-    if (!ready) return;
+  /** 3.0: short round (5 questions) aimed at the heaviest weak topics. */
+  async function beginWeak() {
+    const spots = pickRound(loadWeak());
+    if (spots.length === 0) return;
+    setWeakRound(spots);
+    await start({
+      topic: roundTopic(spots),
+      source: "tema",
+      count: 5,
+      difficulty: "media",
+      focus: roundFocus(spots),
+    });
+  }
+
+  async function start(override?: Record<string, unknown>) {
+    if (!override && !ready) return;
+    if (!override) setWeakRound(null);
     setReviewing(false);
     setError(null);
     setStage("loading");
@@ -262,7 +297,7 @@ export function ExamView({
     try {
       const result = await postJson<ExamPaper>(
         "/api/exam",
-        {
+        override ?? {
           topic: config.topic.trim(),
           source: config.source,
           count: config.count,
@@ -336,7 +371,11 @@ export function ExamView({
     abortRef.current = controller;
     try {
       const graded = [...list];
-      const topic = reviewing ? "Repaso de errores" : config.topic.trim() || paper.title;
+      const topic = weakRound
+        ? "Repasar mis errores"
+        : reviewing
+          ? "Repaso de errores"
+          : config.topic.trim() || paper.title;
       for (let start = 0; start < pending.length; start += 15) {
         const slice = pending.slice(start, start + 15);
         const { results } = await postJson<{ results: GradeResult[] }>(
@@ -383,10 +422,31 @@ export function ExamView({
     setOpen(firstWrong === -1 ? null : firstWrong);
     saveMistakes(foldMistakes(loadMistakes(), paper.questions, list, Date.now()));
     if (!recordedRef.current) {
+      const correct = list.filter((a) => a?.verdict === "correcta").length;
+      const wrong = paper.questions.length - correct;
+      if (weakRound) {
+        recordWeak(roundEvents(weakRound, correct, wrong));
+      } else if (!reviewing) {
+        // 3.0: every miss raises this topic; hits lower it if it was already weak.
+        const subject = currentSubject();
+        const topic = config.topic.trim() || paper.title;
+        const events: WeakEvent[] = paper.questions.map((question, i) =>
+          list[i]?.verdict === "correcta"
+            ? { subject, topic, delta: -0.5, source: "examen" }
+            : { subject, topic, delta: 1, source: "examen", sample: question.prompt },
+        );
+        recordWeak(events);
+      }
+    }
+    if (!recordedRef.current) {
       recordedRef.current = true;
       const count = paper.questions.length;
       const difficulty = reviewing ? "media" : config.difficulty;
-      const topic = reviewing ? "Repaso de errores" : config.topic.trim() || paper.title;
+      const topic = weakRound
+        ? "Repasar mis errores"
+        : reviewing
+          ? "Repaso de errores"
+          : config.topic.trim() || paper.title;
       // A long review is still practice: XP matches at most a 15-question exam.
       const xpCount = Math.min(count, 15);
       const xp = examXp(nota, xpCount, difficulty);
@@ -418,6 +478,7 @@ export function ExamView({
 
   function newExam() {
     setReviewing(false);
+    setWeakRound(null);
     setPaper(null);
     setAnswers([]);
     setError(null);
@@ -483,6 +544,37 @@ export function ExamView({
       />
     </>
   );
+
+  if (weakRound && stage === "loading") {
+    return (
+      <>
+        {header("NEXO AI", "Repasar mis errores", status, "back")}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-2xl px-4 pt-[22px] pb-4">
+            <p className="font-mono text-[11px] tracking-[0.16em] text-neon uppercase">
+              Repaso que se adapta
+            </p>
+            <h1 className="mt-2.5 font-display text-[28px] leading-tight font-semibold text-fg">
+              Armando tu ronda<span className="text-neon">…</span>
+            </h1>
+            <p className="mt-2 text-[14.5px] text-muted">
+              5 preguntas nuevas sobre lo que más te costó:
+            </p>
+            <ul className="mt-3 flex flex-col gap-1.5">
+              {weakRound.map((spot) => (
+                <li
+                  key={spot.id}
+                  className="rounded-sm border border-line bg-bg-elev/70 px-3 py-2 text-sm text-fg"
+                >
+                  {spot.topic}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   if (stage === "config" || stage === "loading") {
     const cappedToday = examsToday >= DAILY.exams;

@@ -15,6 +15,7 @@ import {
   Plus,
   Shuffle,
   RotateCcw,
+  Crosshair,
   Square,
   Target,
   Settings,
@@ -49,6 +50,9 @@ import { rehydrateStudyStores, useGoalStore } from "@/lib/study-store";
 import { useStudyTimer } from "@/lib/use-study-timer";
 import { CelebrationOverlay, HudBar, ProfileView } from "@/components/nexo/progress-ui";
 import { useMistakeCount } from "@/lib/use-mistakes";
+import { recordWeak, saysConfused } from "@/lib/weak-spots";
+import { useWeakSpots } from "@/lib/use-weak-spots";
+import { WeakView } from "@/components/nexo/weak";
 import { useStreakLine } from "@/lib/use-progress";
 import { Lesson } from "@/components/nexo/lesson";
 import { Donate } from "@/components/nexo/donate";
@@ -91,6 +95,8 @@ type View =
   | "profile"
   | "exam"
   | "review"
+  | "weak"
+  | "weakround"
   | "settings"
   | "identity"
   | "favorites"
@@ -387,6 +393,24 @@ export function NexoApp() {
     };
     const assistantId = crypto.randomUUID();
     const previousDoc = store.threads.find((thread) => thread.id === threadId)?.doc;
+    // 3.0: "no entendí" marks this conversation's topic as a weak point.
+    if (content && saysConfused(content)) {
+      const before = store.threads.find((thread) => thread.id === threadId);
+      const asked = [...(before?.messages ?? [])]
+        .reverse()
+        .find((m) => m.role === "user" && m.content.trim() && !saysConfused(m.content));
+      if (before && asked) {
+        recordWeak([
+          {
+            subject: before.subject ?? subject,
+            topic: before.title,
+            delta: 1,
+            source: "chat",
+            sample: asked.content,
+          },
+        ]);
+      }
+    }
     if (doc && docMeta)
       store.setDoc(threadId, { ...docMeta, text: doc.text, messageId: userMessage.id });
     store.appendMessage(threadId, userMessage);
@@ -731,11 +755,18 @@ export function NexoApp() {
             online={link === "online"}
             onAsk={(prompt) => askFromTool(prompt)}
           />
-        ) : view === "exam" || view === "review" ? (
+        ) : view === "weak" ? (
+          <WeakView
+            onBack={() => setView("chat")}
+            status={<HudStatus link={link} />}
+            online={link === "online"}
+            onStart={() => setView("weakround")}
+          />
+        ) : view === "exam" || view === "review" || view === "weakround" ? (
           <ExamView
-            onClose={() => setView("chat")}
+            onClose={() => setView(view === "weakround" ? "weak" : "chat")}
             onStage={setExamStage}
-            boot={view === "review" ? "review" : "config"}
+            boot={view === "review" ? "review" : view === "weakround" ? "weak" : "config"}
             status={<HudStatus link={link} />}
             online={link === "online"}
           />
@@ -830,6 +861,7 @@ export function NexoApp() {
                   onPick={(prompt) => void send(prompt)}
                   onExam={link === "online" ? () => setView("exam") : undefined}
                   onReview={() => setView("review")}
+                  onWeak={() => setView("weak")}
                   onPlan={() => setView("plan")}
                   onGroup={() => setView("group")}
                   onSettings={() => setView("settings")}
@@ -1345,6 +1377,7 @@ function Sidebar({
               Tu perfil
             </button>
           </div>
+          <WeakMenuButton active={view === "weak"} onOpen={() => onOpen("weak")} />
           <ReviewMenuButton onOpen={() => onOpen("review")} />
           <p className="px-1 pt-3 pb-1.5 text-xs text-faint">Estudio</p>
           <div className="grid grid-cols-2 gap-1.5">
@@ -1483,6 +1516,23 @@ function Sidebar({
   );
 }
 
+function WeakMenuButton({ onOpen, active }: { onOpen: () => void; active: boolean }) {
+  const spots = useWeakSpots();
+  return (
+    <button
+      type="button"
+      aria-current={active ? "page" : undefined}
+      className={`tap mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm ${
+        active ? "border-neon/60 text-neon" : "border-line text-fg hover:bg-bg-soft"
+      }`}
+      onClick={onOpen}
+    >
+      <Crosshair className="size-4" strokeWidth={1.75} />
+      Repasar mis errores{spots.length ? ` (${spots.length})` : ""}
+    </button>
+  );
+}
+
 function ReviewMenuButton({ onOpen }: { onOpen: () => void }) {
   const count = useMistakeCount();
   if (count <= 0) return null;
@@ -1502,6 +1552,7 @@ function Empty({
   onPick,
   onExam,
   onReview,
+  onWeak,
   onPlan,
   onGroup,
   onSettings,
@@ -1517,6 +1568,7 @@ function Empty({
   onPick: (prompt: string) => void;
   onExam?: () => void;
   onReview: () => void;
+  onWeak: () => void;
   onPlan: () => void;
   onGroup: () => void;
   onSettings: () => void;
@@ -1672,6 +1724,7 @@ function Empty({
           <span className="truncate">Tomame oral</span>
         </button>
       </div>
+      <WeakQuick onOpen={onWeak} />
       {mistakeCount > 0 ? (
         <button
           type="button"
@@ -1689,6 +1742,30 @@ function Empty({
         <Donate variant="empty" />
       </div>
     </div>
+  );
+}
+
+/** 3.0: landing quick action for the adaptive review. */
+function WeakQuick({ onOpen }: { onOpen: () => void }) {
+  const spots = useWeakSpots();
+  const top = spots[0];
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="rise rise-3 tap chip mt-2 flex min-h-12 w-full items-center gap-2.5 rounded-sm border border-neon/40 bg-neon/5 px-3 py-2 text-left text-sm text-fg"
+    >
+      <Crosshair className="size-4 shrink-0 text-neon" strokeWidth={1.75} />
+      <span className="min-w-0 flex-1">
+        <span className="block">Repasar mis errores</span>
+        <span className="block truncate text-xs text-faint">
+          {top ? `Lo que más te cuesta: ${top.topic}` : "NEXO se acuerda de lo que te cuesta"}
+        </span>
+      </span>
+      <span className="shrink-0 font-mono text-[11px] tracking-wider text-neon uppercase">
+        {spots.length ? `${spots.length} temas` : "Nuevo"}
+      </span>
+    </button>
   );
 }
 

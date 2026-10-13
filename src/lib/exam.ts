@@ -168,6 +168,8 @@ export type ExamRequest = {
   difficulty: ExamDifficulty;
   document?: DocPayload;
   image?: string;
+  /** 3.0: example questions the student missed, so the round aims at them. */
+  focus?: string[];
 };
 
 export type ExamRequestCheck = { ok: true; request: ExamRequest } | { ok: false; error: string };
@@ -185,6 +187,14 @@ export function checkExamRequest(body: unknown): ExamRequestCheck {
   const difficulty: ExamDifficulty =
     record.difficulty === "facil" || record.difficulty === "dificil" ? record.difficulty : "media";
   const request: ExamRequest = { topic, source, count, difficulty };
+  if (Array.isArray(record.focus)) {
+    const focus = record.focus
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.replace(/\s+/g, " ").trim().slice(0, 160))
+      .filter((item) => item.length >= 2)
+      .slice(0, 5);
+    if (focus.length) request.focus = focus;
+  }
   if (source === "tema" && topic.length < 2) {
     return { ok: false, error: "Escribí el tema del examen." };
   }
@@ -217,6 +227,12 @@ export function examUserPrompt(request: ExamRequest) {
     `Dificultad ${DIFFICULTY_GUIDE[request.difficulty]}.`,
     `Exactamente ${request.count} preguntas: ${request.count - written} de opción múltiple (4 opciones, una sola correcta) y ${written} de respuesta escrita corta.`,
   ];
+  if (request.focus?.length) {
+    lines.push(
+      "Es un repaso adaptado: el estudiante se equivocó o no entendió estos puntos. Hacé preguntas NUEVAS (no las copies) que practiquen justo eso, de lo más básico a un poco más:",
+      ...request.focus.map((item) => `- ${item}`),
+    );
+  }
   if (request.source === "pdf" && request.document) {
     lines.push(
       "Basá TODAS las preguntas en el documento adjunto: cada respuesta tiene que poder verificarse leyendo el documento.",

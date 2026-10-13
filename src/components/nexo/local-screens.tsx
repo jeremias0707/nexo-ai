@@ -3,6 +3,7 @@ import { ChevronLeft, Flag, Layers, RotateCcw, Star, User } from "lucide-react";
 import { buildStudyDeck, type DeckFilter, type StudyCard } from "@/lib/cards";
 import { useCardsStore, useFavoritesStore, useProfileStore, useWeekStore } from "@/lib/local-store";
 import { loadMistakes, subscribeMistakes } from "@/lib/mistakes";
+import { currentSubject, recordWeak } from "@/lib/weak-spots";
 import { prepareAvatar } from "@/lib/image-client";
 import { DEFAULT_NICK } from "@/lib/profile";
 import { levelFor, liveStreak, MEDALS } from "@/lib/progress";
@@ -248,6 +249,16 @@ export function CardsView({ onBack, status }: { onBack: () => void; status: Reac
   function grade(knew: boolean) {
     if (!card) return;
     useCardsStore.getState().review(card.id, knew);
+    // 3.0: "No la sabía" raises this card's topic in the adaptive review.
+    recordWeak([
+      {
+        subject: currentSubject(),
+        topic: card.front,
+        delta: knew ? -1 : 1,
+        source: "ficha",
+        sample: card.front,
+      },
+    ]);
     setFlipped(false);
     setConfirmDelete(false);
     setIndex((current) => (deck.length <= 1 ? 0 : (current + 1) % deck.length));
