@@ -16,6 +16,7 @@ import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as ApiExamRouteImport } from './routes/api/exam'
 import { Route as ApiExamGradeRouteImport } from './routes/api/exam-grade'
 import { Route as ApiGroupRouteImport } from './routes/api/group'
+import { Route as ApiKitRouteImport } from './routes/api/kit'
 import { Route as ApiStatusRouteImport } from './routes/api/status'
 
 const IndexRoute = IndexRouteImport.update({
@@ -53,6 +54,11 @@ const ApiGroupRoute = ApiGroupRouteImport.update({
   path: '/api/group',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiKitRoute = ApiKitRouteImport.update({
+  id: '/api/kit',
+  path: '/api/kit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiStatusRoute = ApiStatusRouteImport.update({
   id: '/api/status',
   path: '/api/status',
@@ -67,6 +73,7 @@ export interface FileRoutesByFullPath {
   '/api/exam': typeof ApiExamRoute
   '/api/exam-grade': typeof ApiExamGradeRoute
   '/api/group': typeof ApiGroupRoute
+  '/api/kit': typeof ApiKitRoute
   '/api/status': typeof ApiStatusRoute
 }
 export interface FileRoutesByTo {
@@ -77,6 +84,7 @@ export interface FileRoutesByTo {
   '/api/exam': typeof ApiExamRoute
   '/api/exam-grade': typeof ApiExamGradeRoute
   '/api/group': typeof ApiGroupRoute
+  '/api/kit': typeof ApiKitRoute
   '/api/status': typeof ApiStatusRoute
 }
 export interface FileRoutesById {
@@ -88,6 +96,7 @@ export interface FileRoutesById {
   '/api/exam': typeof ApiExamRoute
   '/api/exam-grade': typeof ApiExamGradeRoute
   '/api/group': typeof ApiGroupRoute
+  '/api/kit': typeof ApiKitRoute
   '/api/status': typeof ApiStatusRoute
 }
 export interface FileRouteTypes {
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
     | '/api/exam'
     | '/api/exam-grade'
     | '/api/group'
+    | '/api/kit'
     | '/api/status'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
     | '/api/exam'
     | '/api/exam-grade'
     | '/api/group'
+    | '/api/kit'
     | '/api/status'
   id:
     | '__root__'
@@ -120,6 +131,7 @@ export interface FileRouteTypes {
     | '/api/exam'
     | '/api/exam-grade'
     | '/api/group'
+    | '/api/kit'
     | '/api/status'
   fileRoutesById: FileRoutesById
 }
@@ -131,6 +143,7 @@ export interface RootRouteChildren {
   ApiExamRoute: typeof ApiExamRoute
   ApiExamGradeRoute: typeof ApiExamGradeRoute
   ApiGroupRoute: typeof ApiGroupRoute
+  ApiKitRoute: typeof ApiKitRoute
   ApiStatusRoute: typeof ApiStatusRoute
 }
 
@@ -185,6 +198,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiGroupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/kit': {
+      id: '/api/kit'
+      path: '/api/kit'
+      fullPath: '/api/kit'
+      preLoaderRoute: typeof ApiKitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/status': {
       id: '/api/status'
       path: '/api/status'
@@ -203,6 +223,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiExamRoute: ApiExamRoute,
   ApiExamGradeRoute: ApiExamGradeRoute,
   ApiGroupRoute: ApiGroupRoute,
+  ApiKitRoute: ApiKitRoute,
   ApiStatusRoute: ApiStatusRoute,
 }
 export const routeTree = rootRouteImport

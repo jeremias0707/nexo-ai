@@ -15,6 +15,7 @@ import {
   Plus,
   Shuffle,
   RotateCcw,
+  Sparkles,
   Crosshair,
   Square,
   Target,
@@ -53,6 +54,7 @@ import { useMistakeCount } from "@/lib/use-mistakes";
 import { recordWeak, saysConfused } from "@/lib/weak-spots";
 import { useWeakSpots } from "@/lib/use-weak-spots";
 import { WeakView } from "@/components/nexo/weak";
+import { KitView, type KitExamPreset } from "@/components/nexo/kit";
 import { useStreakLine } from "@/lib/use-progress";
 import { Lesson } from "@/components/nexo/lesson";
 import { Donate } from "@/components/nexo/donate";
@@ -97,6 +99,8 @@ type View =
   | "review"
   | "weak"
   | "weakround"
+  | "kit"
+  | "kitexam"
   | "settings"
   | "identity"
   | "favorites"
@@ -138,6 +142,7 @@ export function NexoApp() {
   const [voiceOut, setVoiceOut] = useState(false);
   const stopSpeakRef = useRef<(() => void) | null>(null);
   const [cardsDraft, setCardsDraft] = useState<CardsDraft | null>(null);
+  const [kitPreset, setKitPreset] = useState<KitExamPreset | null>(null);
   const [compareSeed, setCompareSeed] = useState<{ answer: string; doc: DocPayload | null }>({
     answer: "",
     doc: null,
@@ -755,6 +760,26 @@ export function NexoApp() {
             online={link === "online"}
             onAsk={(prompt) => askFromTool(prompt)}
           />
+        ) : view === "kit" ? (
+          <KitView
+            onBack={() => setView("chat")}
+            status={<HudStatus link={link} />}
+            online={link === "online"}
+            onCards={() => setView("cards")}
+            onExam={(preset) => {
+              setKitPreset(preset);
+              setView("kitexam");
+            }}
+          />
+        ) : view === "kitexam" && kitPreset ? (
+          <ExamView
+            onClose={() => setView("kit")}
+            onStage={setExamStage}
+            boot="preset"
+            preset={kitPreset}
+            status={<HudStatus link={link} />}
+            online={link === "online"}
+          />
         ) : view === "weak" ? (
           <WeakView
             onBack={() => setView("chat")}
@@ -862,6 +887,7 @@ export function NexoApp() {
                   onExam={link === "online" ? () => setView("exam") : undefined}
                   onReview={() => setView("review")}
                   onWeak={() => setView("weak")}
+                  onKit={() => setView("kit")}
                   onPlan={() => setView("plan")}
                   onGroup={() => setView("group")}
                   onSettings={() => setView("settings")}
@@ -1302,6 +1328,7 @@ function Sidebar({
   const activeId = useChatStore((state) => state.activeId);
   const reply = useSettingsStore((state) => state.reply);
   const study: { id: View | "oral"; label: string; icon: typeof Plus }[] = [
+    { id: "kit", label: "Apuntes", icon: Sparkles },
     { id: "plan", label: "Plan", icon: CalendarDays },
     { id: "cards", label: "Fichas", icon: Layers },
     { id: "compare", label: "Comparar", icon: GitCompare },
@@ -1553,6 +1580,7 @@ function Empty({
   onExam,
   onReview,
   onWeak,
+  onKit,
   onPlan,
   onGroup,
   onSettings,
@@ -1569,6 +1597,7 @@ function Empty({
   onExam?: () => void;
   onReview: () => void;
   onWeak: () => void;
+  onKit: () => void;
   onPlan: () => void;
   onGroup: () => void;
   onSettings: () => void;
@@ -1724,6 +1753,22 @@ function Empty({
           <span className="truncate">Tomame oral</span>
         </button>
       </div>
+      <button
+        type="button"
+        onClick={onKit}
+        className="rise rise-3 tap chip mt-2 flex min-h-12 w-full items-center gap-2.5 rounded-sm border border-line bg-bg-elev/70 px-3 py-2 text-left text-sm text-fg"
+      >
+        <Sparkles className="size-4 shrink-0 text-neon" strokeWidth={1.75} />
+        <span className="min-w-0 flex-1">
+          <span className="block">Apuntes a material de estudio</span>
+          <span className="block truncate text-xs text-faint">
+            PDF o fotos → resumen, fichas, diagrama y examen
+          </span>
+        </span>
+        <span className="shrink-0 font-mono text-[11px] tracking-wider text-neon uppercase">
+          Nuevo
+        </span>
+      </button>
       <WeakQuick onOpen={onWeak} />
       {mistakeCount > 0 ? (
         <button

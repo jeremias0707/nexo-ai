@@ -96,7 +96,7 @@ function shortClock(ms: number) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-async function postJson<T>(url: string, body: unknown, signal?: AbortSignal): Promise<T> {
+export async function postJson<T>(url: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
     headers: deviceHeaders({ "Content-Type": "application/json" }),
@@ -118,13 +118,16 @@ export function ExamView({
   online,
   onStage,
   boot = "config",
+  preset,
 }: {
   onStage?: (stage: string) => void;
   onClose: () => void;
   status: ReactNode;
   online: boolean;
   /** "review" opens the saved-mistakes exam immediately (menu / home). */
-  boot?: "config" | "review" | "weak";
+  boot?: "config" | "review" | "weak" | "preset";
+  /** 3.0 study kit: exam from the same notes, started right away. */
+  preset?: { topic: string; source: "pdf" | "foto"; document?: DocPayload; image?: string };
 }) {
   const [stage, setStage] = useState<Stage>("config");
   const [config, setConfig] = useState<Config>({
@@ -165,6 +168,17 @@ export function ExamView({
     setShowTimer(localStorage.getItem(TIMER_KEY) !== "off");
     if (boot === "review") beginReview();
     if (boot === "weak") void beginWeak();
+    if (boot === "preset" && preset) {
+      setConfig((current) => ({ ...current, topic: preset.topic, source: preset.source }));
+      void start({
+        topic: preset.topic,
+        source: preset.source,
+        count: 10,
+        difficulty: "media",
+        document: preset.document,
+        image: preset.image,
+      });
+    }
     return () => abortRef.current?.abort();
     // boot is only read on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
