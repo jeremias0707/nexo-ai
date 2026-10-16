@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { globalBudgetAllows, requireDeviceAccess } from "@/lib/access.server";
+import { FREE_CAPS, globalBudgetAllows, requireDeviceAccess } from "@/lib/access.server";
 import { parseChatBody } from "@/lib/chat-payload";
 import { runIfWithinQuota } from "@/lib/rate-limit.server";
 import { explainAddon, mobileShortAddon, replyAddon } from "@/lib/settings";
@@ -37,8 +37,7 @@ export const Route = createFileRoute("/api/chat")({
           {
             bucket: "chat",
             deviceKey: access.deviceKey,
-            message:
-              "Llegaste al límite gratis de hoy (40 chats). Mañana se renueva el cupo.",
+            message: `Llegaste al límite gratis de hoy (${FREE_CAPS.chats} chats). Mañana se renueva el cupo.`,
           },
           async () => {
             const apiKey = process.env.XAI_API_KEY;
@@ -64,8 +63,7 @@ export const Route = createFileRoute("/api/chat")({
                   stream: true,
                   // xAI advises not storing server-side history when sending images.
                   store: false,
-                  max_output_tokens:
-                    parsed.mobile || parsed.explain === "simple" ? 700 : 1000,
+                  max_output_tokens: parsed.mobile || parsed.explain === "simple" ? 700 : 1000,
                   temperature: 0.4,
                   tools: [{ type: "web_search" }],
                   input: [
@@ -90,7 +88,8 @@ export const Route = createFileRoute("/api/chat")({
             }
 
             if (!upstream.ok || !upstream.body) {
-              const imageRejected = parsed.hasImage && [400, 413, 415, 422].includes(upstream.status);
+              const imageRejected =
+                parsed.hasImage && [400, 413, 415, 422].includes(upstream.status);
               return Response.json(
                 {
                   error:

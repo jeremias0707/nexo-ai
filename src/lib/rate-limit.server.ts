@@ -3,7 +3,7 @@
  *
  * Minute window: MAX_HITS accepted requests per WINDOW_MS (an exam counts as
  * several). Rolling daily cap:
- *   - 40 chats/day
+ *   - 40 chats/day (off until CHAT_UNLIMITED_UNTIL, 2026-11-14 00:00 ART; then back automatically)
  *   - 5 exams/day
  *   - /api/exam-grade does not add a second exam; it counts as one chat so a
  *     correction cannot bypass the daily chat cap.
@@ -26,6 +26,7 @@
  * without one eagerly boots PGLite, which the production bundle cannot load.
  */
 import { isIP } from "node:net";
+import { chatsUnlimited } from "./access-constants.ts";
 
 export const WINDOW_MS = 60_000;
 export const MAX_HITS = 12;
@@ -121,10 +122,19 @@ async function hashKey(material: string) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** Stand-in for "no daily cap" so the counting path stays the same. */
+const NO_DAILY_CAP = 1_000_000_000;
+let promoNowForTests: (() => number) | null = null;
+
+export function setChatPromoNowForTests(now: (() => number) | null) {
+  promoNowForTests = now;
+}
+
 function dailyBudget(bucket: RateBucket) {
   // Grade shares the chat cap and does not touch the exam cap.
   if (bucket === "exam") return { scope: "exam" as const, max: DAILY_EXAM_MAX };
-  return { scope: "chat" as const, max: DAILY_CHAT_MAX };
+  const unlimited = chatsUnlimited(promoNowForTests ? promoNowForTests() : Date.now());
+  return { scope: "chat" as const, max: unlimited ? NO_DAILY_CAP : DAILY_CHAT_MAX };
 }
 
 function databaseUrl() {

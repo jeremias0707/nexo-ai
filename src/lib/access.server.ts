@@ -21,11 +21,7 @@
  *   Preview without GROK_PROJECT_ID also soft-registers.
  */
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import {
-  DEVICE_HEADER,
-  FREE_CAPS,
-  type AccessCaps,
-} from "./access-constants.ts";
+import { currentCaps, DEVICE_HEADER, FREE_CAPS, type AccessCaps } from "./access-constants.ts";
 import { env, isWorkspacePreview } from "./env.server.ts";
 
 export { DEVICE_HEADER, FREE_CAPS };
@@ -105,9 +101,10 @@ function mintRawToken(): string {
  * Redeem invite code → device token.
  * Preview without NEXO_ACCESS_CODE: issues a token with empty/any code.
  */
-export async function redeemAccessCode(code: string | null | undefined): Promise<
-  | { ok: true; token: string; caps: AccessCaps }
-  | { ok: false; status: number; error: string }
+export async function redeemAccessCode(
+  code: string | null | undefined,
+): Promise<
+  { ok: true; token: string; caps: AccessCaps } | { ok: false; status: number; error: string }
 > {
   const expected = configuredAccessCode();
 
@@ -138,12 +135,10 @@ export async function redeemAccessCode(code: string | null | undefined): Promise
   const t = nowMs();
   devices.set(key, { token, createdAt: t, lastSeen: t });
   mintHits.push(t);
-  return { ok: true, token, caps: FREE_CAPS };
+  return { ok: true, token, caps: currentCaps() };
 }
 
-export async function verifyDeviceToken(
-  token: string | null | undefined,
-): Promise<string | null> {
+export async function verifyDeviceToken(token: string | null | undefined): Promise<string | null> {
   const raw = (token ?? "").trim();
   if (!raw || raw.length < 16 || raw.length > 128) return null;
   const key = await hashToken(raw);
@@ -212,7 +207,7 @@ export function accessPublicStatus() {
   return {
     accessRequired: accessGateRequired() || Boolean(configuredAccessCode()),
     accessConfigured: accessReady(),
-    caps: FREE_CAPS,
+    caps: currentCaps(),
     free: true,
   };
 }

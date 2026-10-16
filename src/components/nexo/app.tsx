@@ -80,7 +80,7 @@ import {
   type Recognition,
 } from "@/lib/speech-client";
 import { deviceHeaders, clearDeviceToken } from "@/lib/access-client";
-import { FREE_CAPS } from "@/lib/access-constants";
+import { capsLine } from "@/lib/access-constants";
 import { challengeForDay, isDailyDone, markDailyDone, type DailyChallenge } from "@/lib/daily";
 import { MISSIONS, pickMissions, type Mission } from "@/lib/missions";
 import {
@@ -1488,8 +1488,8 @@ function Sidebar({
             </div>
           </details>
           <p className="px-1 pt-3 text-xs leading-relaxed text-faint">
-            Gratis · {FREE_CAPS.chats} chats y {FREE_CAPS.exams} exámenes por día en este
-            dispositivo. El historial vive solo en este navegador. · NEXO {APP_VERSION}
+            Gratis · {capsLine()} en este dispositivo. El historial vive solo en este navegador. ·
+            NEXO {APP_VERSION}
           </p>
         </div>
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { afterEach, describe, it } from "node:test";
+import { after, afterEach, before, describe, it } from "node:test";
 import {
   DAILY_CHAT_MAX,
   DAILY_EXAM_MAX,
@@ -9,12 +9,18 @@ import {
   clientIp,
   resetRateLimitMemoryForTests,
   runIfWithinQuota,
+  setChatPromoNowForTests,
   setRateLimitNowForTests,
   setRateLimitQueryForTests,
   tooManyRequests,
 } from "./rate-limit.server.ts";
 
 const IP = "203.0.113.20";
+const AFTER_PROMO = Date.parse("2026-11-14T00:00:00-03:00");
+
+// The tests below check the normal 40/day cap, i.e. after the free-chat promo.
+before(() => setChatPromoNowForTests(() => AFTER_PROMO));
+after(() => setChatPromoNowForTests(null));
 const DB = "postgres://rate-limit-test.invalid/nexo";
 
 function vercelRequest(headers: Record<string, string>) {
@@ -56,10 +62,7 @@ describe("AI quota", { concurrency: false }, () => {
     assert.equal(b, shared);
     assert.equal(clientIp(vercelRequest({ "x-forwarded-for": "1.2.3.4" })), null);
     assert.equal(clientIp(vercelRequest({ "x-real-ip": "203.0.113.9" })), null);
-    assert.equal(
-      clientIp(vercelRequest({ "x-vercel-forwarded-for": "not-an-ip" })),
-      null,
-    );
+    assert.equal(clientIp(vercelRequest({ "x-vercel-forwarded-for": "not-an-ip" })), null);
 
     // Off Vercel (this Grok host), a client-supplied platform header is not trusted.
     delete process.env.VERCEL;
@@ -264,7 +267,6 @@ describe("AI quota", { concurrency: false }, () => {
     assert.equal(await tooManyRequests(IP, 1, "chat"), true);
   });
 
-
   it("on the Grok host allows calls until the in-memory daily cap, and a spoofed X-Forwarded-For adds no quota", async () => {
     delete process.env.VERCEL;
     delete process.env.DATABASE_URL;
@@ -416,5 +418,52 @@ describe("Stage A per-device memory caps", { concurrency: false }, () => {
     assert.equal(await tooManyRequests(null, 1, "chat", "device-a-key"), true);
     // Another device still has room.
     assert.equal(await tooManyRequests(null, 1, "chat", "device-b-key"), false);
+  });
+});
+
+describe("3.0.1 free chats until Nov 14, 2026 (Buenos Aires)", { concurrency: false }, () => {
+  const BEFORE = Date.parse("2026-11-13T23:59:59-03:00");
+  afterEach(() => {
+    setChatPromoNowForTests(() => AFTER_PROMO);
+    setRateLimitNowForTests(null);
+    resetRateLimitMemoryForTests();
+  });
+
+  async function runChats(n: number, bucket: "chat" | "exam" = "chat") {
+    let now = 1_700_000_000_000;
+    setRateLimitNowForTests(() => now);
+    let accepted = 0;
+    for (let i = 0; i < n; i++) {
+      if (i > 0 && i % MAX_HITS === 0) now += WINDOW_MS + 1;
+      if (!(await tooManyRequests(null, 1, bucket, "promo-device-key"))) accepted += 1;
+    }
+    return accepted;
+  }
+
+  it("before the date: no daily chat cap, exams still 5", async () => {
+    delete process.env.DATABASE_URL;
+    delete process.env.VERCEL;
+    setChatPromoNowForTests(() => BEFORE);
+    assert.equal(await runChats(DAILY_CHAT_MAX + 20), DAILY_CHAT_MAX + 20);
+    resetRateLimitMemoryForTests();
+    assert.equal(await runChats(10, "exam"), DAILY_EXAM_MAX);
+  });
+
+  it("before the date: the per-minute limit still applies", async () => {
+    delete process.env.DATABASE_URL;
+    delete process.env.VERCEL;
+    setChatPromoNowForTests(() => BEFORE);
+    setRateLimitNowForTests(() => 1_700_000_000_000);
+    let accepted = 0;
+    for (let i = 0; i < MAX_HITS + 3; i++)
+      if (!(await tooManyRequests(null, 1, "chat", "minute-device"))) accepted += 1;
+    assert.equal(accepted, MAX_HITS);
+  });
+
+  it("from Nov 14 00:00 (Buenos Aires): back to 40/day by itself", async () => {
+    delete process.env.DATABASE_URL;
+    delete process.env.VERCEL;
+    setChatPromoNowForTests(() => AFTER_PROMO);
+    assert.equal(await runChats(DAILY_CHAT_MAX + 20), DAILY_CHAT_MAX);
   });
 });
