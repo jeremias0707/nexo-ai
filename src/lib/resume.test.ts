@@ -16,7 +16,10 @@ describe("seguir donde quedaste (2.7)", () => {
   it("picks the most recent answered conversation", () => {
     const list = [t("a", 1), t("b", 3), t("c", 5, false)];
     assert.equal(lastThread(list)?.id, "b");
-    assert.deepEqual(recentThreads(list).map((x) => x.id), ["b", "a"]);
+    assert.deepEqual(
+      recentThreads(list).map((x) => x.id),
+      ["b", "a"],
+    );
     assert.equal(lastThread([]), null);
   });
 

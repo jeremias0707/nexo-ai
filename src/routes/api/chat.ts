@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FREE_CAPS, globalBudgetAllows, requireDeviceAccess } from "@/lib/access.server";
+import { globalBudgetAllows, requireDeviceAccess } from "@/lib/access.server";
 import { parseChatBody } from "@/lib/chat-payload";
 import { runIfWithinQuota } from "@/lib/rate-limit.server";
 import { explainAddon, mobileShortAddon, replyAddon } from "@/lib/settings";
@@ -37,7 +37,7 @@ export const Route = createFileRoute("/api/chat")({
           {
             bucket: "chat",
             deviceKey: access.deviceKey,
-            message: `Llegaste al límite gratis de hoy (${FREE_CAPS.chats} chats). Mañana se renueva el cupo.`,
+            message: "Vas muy rápido: esperá un minuto y probá de nuevo.",
           },
           async () => {
             const apiKey = process.env.XAI_API_KEY;

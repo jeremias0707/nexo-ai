@@ -69,8 +69,10 @@ export function sanitizeWeek(value: unknown): WeekProgress {
   const base = emptyWeek();
   if (!value || typeof value !== "object") return base;
   const raw = value as Partial<WeekProgress>;
-  const weekId = typeof raw.weekId === "string" && /^\d{4}-W\d{2}$/.test(raw.weekId) ? raw.weekId : "";
-  const n = typeof raw.n === "number" && Number.isFinite(raw.n) && raw.n > 0 ? Math.floor(raw.n) : 0;
+  const weekId =
+    typeof raw.weekId === "string" && /^\d{4}-W\d{2}$/.test(raw.weekId) ? raw.weekId : "";
+  const n =
+    typeof raw.n === "number" && Number.isFinite(raw.n) && raw.n > 0 ? Math.floor(raw.n) : 0;
   return { weekId, n: Math.min(n, 99), done: raw.done === true && Boolean(weekId) };
 }
 

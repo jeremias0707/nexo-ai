@@ -37,42 +37,20 @@ export function clearDeviceToken() {
   }
 }
 
+/** 3.0.2: random id made on this device (no code). Only used to count exams per device. */
+export function deviceId(): string {
+  const existing = readDeviceToken();
+  if (existing) return existing;
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  const id = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  writeDeviceToken(id);
+  return id;
+}
+
 export function deviceHeaders(extra?: HeadersInit): Headers {
   const headers = new Headers(extra);
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  const token = readDeviceToken();
-  if (token) headers.set(DEVICE_HEADER, token);
+  headers.set(DEVICE_HEADER, deviceId());
   return headers;
-}
-
-export type AccessRedeemResult =
-  | { ok: true; token: string; caps: AccessCaps }
-  | { ok: false; status: number; error: string };
-
-/** Redeem invite code (or soft preview register) and persist the device token. */
-export async function redeemAccess(code: string): Promise<AccessRedeemResult> {
-  let response: Response;
-  try {
-    response = await fetch("/api/access", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: code.trim() }),
-    });
-  } catch {
-    return { ok: false, status: 0, error: "No pude conectar. Revisá tu internet." };
-  }
-  const data = (await response.json().catch(() => ({}))) as {
-    error?: string;
-    token?: string;
-    caps?: AccessCaps;
-  };
-  if (!response.ok || !data.token) {
-    return {
-      ok: false,
-      status: response.status,
-      error: data.error || "No pude activar el acceso.",
-    };
-  }
-  writeDeviceToken(data.token);
-  return { ok: true, token: data.token, caps: data.caps ?? FREE_CAPS };
 }

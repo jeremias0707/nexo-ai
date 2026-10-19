@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { accessPublicStatus, redeemAccessCode } from "@/lib/access.server";
+import { accessPublicStatus, issueDeviceId } from "@/lib/access.server";
 
 export const Route = createFileRoute("/api/access")({
   server: {
@@ -8,21 +8,9 @@ export const Route = createFileRoute("/api/access")({
         Response.json(accessPublicStatus(), {
           headers: { "Cache-Control": "no-store" },
         }),
-      POST: async ({ request }) => {
-        let payload: unknown;
-        try {
-          payload = await request.json();
-        } catch {
-          payload = {};
-        }
-        const code =
-          payload && typeof payload === "object" && "code" in payload
-            ? String((payload as { code?: unknown }).code ?? "")
-            : "";
-        const result = await redeemAccessCode(code);
-        if (!result.ok) {
-          return Response.json({ error: result.error }, { status: result.status });
-        }
+      // 3.0.2: no access code. Older apps still call this; any code is ignored.
+      POST: async () => {
+        const result = issueDeviceId();
         return Response.json(
           { token: result.token, caps: result.caps, free: true },
           { headers: { "Cache-Control": "no-store" } },

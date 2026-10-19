@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ExamQuestion } from "./exam.ts";
-import { foldMistakes, mistakeButtonLabel, MISTAKE_CAP, QUICK_REVIEW_COUNT, reviewFromExam, reviewPaper } from "./mistakes.ts";
+import {
+  foldMistakes,
+  mistakeButtonLabel,
+  MISTAKE_CAP,
+  QUICK_REVIEW_COUNT,
+  reviewFromExam,
+  reviewPaper,
+} from "./mistakes.ts";
 
 const mc = (n: number): ExamQuestion => ({
   id: `q${n}`,
@@ -108,6 +115,12 @@ describe("repasar errores", () => {
     assert.equal(paper?.questions[0].prompt, "Pregunta 1");
     assert.equal(paper?.questions[1].prompt, "Pregunta 3");
     assert.equal(paper?.questions[2].prompt, "Pregunta 4");
-    assert.equal(reviewFromExam(questions, answers.map(() => ({ given: 1, verdict: "correcta" as const }))), null);
+    assert.equal(
+      reviewFromExam(
+        questions,
+        answers.map(() => ({ given: 1, verdict: "correcta" as const })),
+      ),
+      null,
+    );
   });
 });

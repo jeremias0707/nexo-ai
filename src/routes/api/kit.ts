@@ -45,7 +45,7 @@ export const Route = createFileRoute("/api/kit")({
             weight: KIT_CHAT_WEIGHT,
             bucket: "chat",
             deviceKey: access.deviceKey,
-            message: "Llegaste al límite gratis de chats de hoy. Mañana se renueva el cupo.",
+            message: "Vas muy rápido: esperá un minuto y probá de nuevo.",
           },
           async () => {
             const apiKey = process.env.XAI_API_KEY;

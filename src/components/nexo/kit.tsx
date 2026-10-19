@@ -11,7 +11,6 @@ import {
   X,
 } from "lucide-react";
 import { ScreenHeader } from "@/components/nexo/local-screens";
-import { CHAT_UNLIMITED_LABEL, chatsUnlimited, FREE_CAPS } from "@/lib/access-constants";
 import { MermaidDiagram } from "@/components/nexo/diagram";
 import { postJson } from "@/components/nexo/exam";
 import { DOC_ACCEPT, readDocument } from "@/lib/document-client";
@@ -293,12 +292,7 @@ export function KitView({
               </button>
               <div className="rounded-md border border-line bg-bg-elev/50 px-3 py-2.5 text-xs leading-relaxed text-faint">
                 <p className="text-muted">Qué gasta del cupo gratis:</p>
-                <p>
-                  · Resumen + fichas + diagrama:{" "}
-                  {chatsUnlimited()
-                    ? `1 chat (hasta el ${CHAT_UNLIMITED_LABEL} los chats son sin límite).`
-                    : `1 de tus ${FREE_CAPS.chats} chats de hoy.`}
-                </p>
+                <p>· Resumen + fichas + diagrama: 1 chat (los chats no tienen límite diario).</p>
                 <p>· Examen de práctica (si lo hacés): 1 de tus 5 exámenes de hoy.</p>
                 <p>Tus apuntes no se guardan: solo el resultado queda en este dispositivo.</p>
               </div>

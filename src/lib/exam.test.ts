@@ -265,23 +265,40 @@ describe("reviewPrompt", () => {
     const parsed = parseGradeOutput(
       JSON.stringify({
         results: [
-          { verdict: "correcta", feedback: "Nombraste la causa.", tip: "Tip: sumá la fecha para que sea completa." },
+          {
+            verdict: "correcta",
+            feedback: "Nombraste la causa.",
+            tip: "Tip: sumá la fecha para que sea completa.",
+          },
           { verdict: "parcial", feedback: "Falta la consecuencia.", tip: "" },
         ],
       }),
       2,
     );
     assert.deepEqual(parsed, [
-      { verdict: "correcta", feedback: "Nombraste la causa.", tip: "sumá la fecha para que sea completa." },
+      {
+        verdict: "correcta",
+        feedback: "Nombraste la causa.",
+        tip: "sumá la fecha para que sea completa.",
+      },
       { verdict: "parcial", feedback: "Falta la consecuencia." },
     ]);
     assert.equal(rubricLabel("correcta"), "Bien");
     assert.equal(rubricLabel("parcial"), "A medias");
     assert.equal(rubricLabel("incorrecta"), "Mal");
     assert.equal(rubricLabel(undefined), "Sin corregir");
-    assert.deepEqual(GRADE_SCHEMA.properties.results.items.required, ["verdict", "feedback", "tip"]);
+    assert.deepEqual(GRADE_SCHEMA.properties.results.items.required, [
+      "verdict",
+      "feedback",
+      "tip",
+    ]);
     const summary = rubricSummary(
-      [{ given: 0, verdict: "correcta" }, { given: "algo", verdict: "parcial" }, { given: null, verdict: "incorrecta" }, { given: "x" }],
+      [
+        { given: 0, verdict: "correcta" },
+        { given: "algo", verdict: "parcial" },
+        { given: null, verdict: "incorrecta" },
+        { given: "x" },
+      ],
       5,
     );
     assert.equal(summary.text, "1 bien · 1 a medias · 2 mal · 1 sin corregir");

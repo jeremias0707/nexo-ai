@@ -93,7 +93,12 @@ type Token = { t: "num"; v: number } | { t: "id"; v: string } | { t: "op"; v: st
 
 function tokenize(src: string): Token[] {
   const out: Token[] = [];
-  const s = src.replace(/\*\*/g, "^").replace(/π/g, "pi").replace(/[·×]/g, "*").replace(/−/g, "-").replace(/÷/g, "/");
+  const s = src
+    .replace(/\*\*/g, "^")
+    .replace(/π/g, "pi")
+    .replace(/[·×]/g, "*")
+    .replace(/−/g, "-")
+    .replace(/÷/g, "/");
   let i = 0;
   while (i < s.length) {
     const c = s[i];
@@ -121,12 +126,15 @@ function tokenize(src: string): Token[] {
 /** Splits identifiers like "xsin" or "2pix" the way people write them. */
 function splitIdentifier(id: string): string[] {
   if (own(FUNCS, id) || own(CONSTS, id) || id === "x") return [id];
-  const names = [...Object.keys(FUNCS), ...Object.keys(CONSTS), "x"].sort((a, b) => b.length - a.length);
+  const names = [...Object.keys(FUNCS), ...Object.keys(CONSTS), "x"].sort(
+    (a, b) => b.length - a.length,
+  );
   const parts: string[] = [];
   let rest = id;
   while (rest) {
     const hit = names.find((name) => rest.startsWith(name));
-    if (!hit) throw new ExprError(`No conozco "${id}". Usá x, pi, e o funciones como sin, cos, sqrt, ln.`);
+    if (!hit)
+      throw new ExprError(`No conozco "${id}". Usá x, pi, e o funciones como sin, cos, sqrt, ln.`);
     parts.push(hit);
     rest = rest.slice(hit.length);
   }
@@ -138,7 +146,8 @@ export function parseExpr(src: string): Node {
   if (src.length > EXPR_MAX_LENGTH) throw new ExprError("La expresión es demasiado larga.");
   const tokens: Token[] = [];
   for (const token of tokenize(src)) {
-    if (token.t === "id") for (const part of splitIdentifier(token.v)) tokens.push({ t: "id", v: part });
+    if (token.t === "id")
+      for (const part of splitIdentifier(token.v)) tokens.push({ t: "id", v: part });
     else tokens.push(token);
   }
   let pos = 0;
@@ -277,7 +286,9 @@ const str = (v: unknown, max = 80) =>
 function numbers(v: unknown, n: number): number[] | null {
   if (!Array.isArray(v) || v.length !== n) return null;
   const out = v.map((item) => (typeof item === "string" ? Number(item) : item));
-  return out.every((item) => typeof item === "number" && Number.isFinite(item)) ? (out as number[]) : null;
+  return out.every((item) => typeof item === "number" && Number.isFinite(item))
+    ? (out as number[])
+    : null;
 }
 
 /** Parses and validates the text of a ```grafico block. Errors are Spanish. */
@@ -294,7 +305,11 @@ export function parseGrafico(text: string): ChartParse {
   const r = raw as Record<string, unknown>;
   const typeKey = String(r.type ?? r.tipo ?? "").toLowerCase();
   const type = own(TYPES, typeKey) ? TYPES[typeKey] : undefined;
-  if (!type) return { ok: false, error: "Tipo de gráfico desconocido (usá funcion, barras, lineas o torta)." };
+  if (!type)
+    return {
+      ok: false,
+      error: "Tipo de gráfico desconocido (usá funcion, barras, lineas o torta).",
+    };
   const title = str(r.title ?? r.titulo, 100);
   const source = str(r.source ?? r.fuente, 120);
   const unit = str(r.unit ?? r.unidad, 12);
@@ -307,11 +322,18 @@ export function parseGrafico(text: string): ChartParse {
         : [r.expr];
     const exprs: FunctionSpec["exprs"] = [];
     for (const item of list.slice(0, GRAFICO_MAX_FUNCTIONS)) {
-      const rawExpr = typeof item === "string" ? item : str((item as Record<string, unknown>)?.expr, EXPR_MAX_LENGTH);
+      const rawExpr =
+        typeof item === "string"
+          ? item
+          : str((item as Record<string, unknown>)?.expr, EXPR_MAX_LENGTH);
       const expr = rawExpr?.replace(/^\s*(y|[fgh]\s*\(\s*x\s*\))\s*=/i, "").trim();
       const name =
-        (typeof item === "object" && item ? str((item as Record<string, unknown>).name ?? (item as Record<string, unknown>).nombre, 40) : undefined) ??
-        `y = ${String(expr ?? "")}`;
+        (typeof item === "object" && item
+          ? str(
+              (item as Record<string, unknown>).name ?? (item as Record<string, unknown>).nombre,
+              40,
+            )
+          : undefined) ?? `y = ${String(expr ?? "")}`;
       if (!expr) return { ok: false, error: "Falta la expresión de la función." };
       try {
         parseExpr(expr);
@@ -334,12 +356,19 @@ export function parseGrafico(text: string): ChartParse {
   const labels = Array.isArray(r.labels ?? r.etiquetas)
     ? ((r.labels ?? r.etiquetas) as unknown[]).map((label) => String(label).slice(0, 40))
     : null;
-  if (!labels || labels.length === 0) return { ok: false, error: "Faltan las etiquetas del gráfico." };
-  if (labels.length > GRAFICO_MAX_POINTS) return { ok: false, error: "El gráfico tiene demasiados datos." };
+  if (!labels || labels.length === 0)
+    return { ok: false, error: "Faltan las etiquetas del gráfico." };
+  if (labels.length > GRAFICO_MAX_POINTS)
+    return { ok: false, error: "El gráfico tiene demasiados datos." };
 
   if (type === "torta") {
-    const firstSeries = Array.isArray(r.series) ? (r.series[0] as Record<string, unknown> | undefined) : undefined;
-    const values = numbers(r.values ?? r.valores ?? firstSeries?.values ?? firstSeries?.valores, labels.length);
+    const firstSeries = Array.isArray(r.series)
+      ? (r.series[0] as Record<string, unknown> | undefined)
+      : undefined;
+    const values = numbers(
+      r.values ?? r.valores ?? firstSeries?.values ?? firstSeries?.valores,
+      labels.length,
+    );
     if (!values) return { ok: false, error: "Los valores no coinciden con las etiquetas." };
     if (values.some((value) => value < 0) || values.every((value) => value === 0)) {
       return { ok: false, error: "Una torta necesita valores positivos." };
@@ -349,7 +378,7 @@ export function parseGrafico(text: string): ChartParse {
 
   const rawSeries = Array.isArray(r.series)
     ? r.series
-    : r.values ?? r.valores
+    : (r.values ?? r.valores)
       ? [{ name: title ?? "Serie", values: r.values ?? r.valores }]
       : [];
   const series: SeriesSpec["series"] = [];

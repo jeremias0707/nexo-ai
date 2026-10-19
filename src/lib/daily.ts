@@ -94,7 +94,10 @@ export const DAILY_DONE_KEY = "nexo-daily-done";
 export type DailyDone = { day: string; id: string };
 
 /** Deterministic pick from the pool for a calendar day (local timezone). */
-export function challengeForDay(date: Date = new Date(), pool: readonly DailyChallenge[] = DAILY_POOL) {
+export function challengeForDay(
+  date: Date = new Date(),
+  pool: readonly DailyChallenge[] = DAILY_POOL,
+) {
   if (pool.length === 0) {
     return {
       id: "vacio",

@@ -133,7 +133,12 @@ describe("citas (2.7)", () => {
   });
 
   it("text notes have no pages: cite sections instead", () => {
-    const ctx = documentContext({ name: "apunte.txt", kind: "text", truncated: false, text: "Unidad 1" });
+    const ctx = documentContext({
+      name: "apunte.txt",
+      kind: "text",
+      truncated: false,
+      text: "Unidad 1",
+    });
     assert.ok(ctx.includes("no cites páginas"));
     assert.ok(!ctx.includes("[Página N]"));
   });

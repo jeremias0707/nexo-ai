@@ -21,7 +21,19 @@ test("evaluates basic expressions with precedence", () => {
 });
 
 test("rejects unsafe or broken expressions without eval", () => {
-  for (const bad of ["alert(1)", "x;1", "constructor", "toString(x)", "__proto__", "(x+1", "x+", "", "process.exit()", "x[0]", "`x`"]) {
+  for (const bad of [
+    "alert(1)",
+    "x;1",
+    "constructor",
+    "toString(x)",
+    "__proto__",
+    "(x+1",
+    "x+",
+    "",
+    "process.exit()",
+    "x[0]",
+    "`x`",
+  ]) {
     assert.throws(() => compileExpr(bad), Error, bad);
   }
   assert.throws(() => compileExpr("(".repeat(100) + "x" + ")".repeat(100)));
@@ -29,15 +41,21 @@ test("rejects unsafe or broken expressions without eval", () => {
 });
 
 test("parses function charts with defaults and aliases", () => {
-  const r = parseGrafico('{"tipo":"función","titulo":"Parábola","expr":"x^2-4","xmin":-5,"xmax":5}');
+  const r = parseGrafico(
+    '{"tipo":"función","titulo":"Parábola","expr":"x^2-4","xmin":-5,"xmax":5}',
+  );
   assert.ok(r.ok);
   assert.equal(r.spec.type, "funcion");
   if (r.spec.type !== "funcion") return;
   assert.equal(r.spec.title, "Parábola");
   assert.deepEqual(r.spec.exprs, [{ expr: "x^2-4", name: "y = x^2-4" }]);
   const prefixed = parseGrafico('{"type":"funcion","expr":"f(x) = 2x+1"}');
-  assert.ok(prefixed.ok && prefixed.spec.type === "funcion" && prefixed.spec.exprs[0].expr === "2x+1");
-  const multi = parseGrafico('{"type":"funcion","exprs":["sin(x)",{"expr":"cos(x)","name":"coseno"}]}');
+  assert.ok(
+    prefixed.ok && prefixed.spec.type === "funcion" && prefixed.spec.exprs[0].expr === "2x+1",
+  );
+  const multi = parseGrafico(
+    '{"type":"funcion","exprs":["sin(x)",{"expr":"cos(x)","name":"coseno"}]}',
+  );
   assert.ok(multi.ok && multi.spec.type === "funcion" && multi.spec.exprs[1].name === "coseno");
   assert.ok(multi.ok && multi.spec.type === "funcion" && multi.spec.xmin === -10);
 });

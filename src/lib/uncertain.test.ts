@@ -6,7 +6,10 @@ import { systemPrompt } from "./tutor.server.ts";
 describe("uncertainty (2.7)", () => {
   it("detects the marker line the prompt asks for", () => {
     assert.equal(hasUncertainty("No estoy seguro: el año exacto."), true);
-    assert.equal(hasUncertainty("La Revolución fue en 1810.\n\n**No estoy segura:** del día."), true);
+    assert.equal(
+      hasUncertainty("La Revolución fue en 1810.\n\n**No estoy segura:** del día."),
+      true,
+    );
     assert.equal(hasUncertainty("> No estoy seguro: chequealo."), true);
   });
 

@@ -40,12 +40,17 @@ export function subjectAddon(value: unknown): string {
   if (!id) return "";
   const tone: Record<SubjectId, string> = {
     mate: "Estás ayudando con matemática de secundaria. Priorizá pasos claros, definí símbolos la primera vez y usá fórmulas entre $. Si falta un dato, pedilo antes de inventar.",
-    histo: "Estás ayudando con historia de secundaria. Priorizá causas, consecuencias y fechas solo si las sabés con seguridad. Si no estás seguro de un dato, dilo.",
+    histo:
+      "Estás ayudando con historia de secundaria. Priorizá causas, consecuencias y fechas solo si las sabés con seguridad. Si no estás seguro de un dato, dilo.",
     bio: "Estás ayudando con biología de secundaria. Definí el vocabulario la primera vez y relacioná estructuras con funciones. No inventes nombres científicos.",
-    fisica: "Estás ayudando con física de secundaria. Mostrá unidades, fórmulas entre $ y un ejemplo concreto. Si falta un dato, pedilo.",
-    quimica: "Estás ayudando con química de secundaria. Cuidá balances, nomenclatura y estados. No inventes reacciones ni coeficientes.",
-    lengua: "Estás ayudando con lengua y literatura de secundaria. Sé concreto con ejemplos de oraciones o fragmentos cortos. No inventes citas textuales.",
-    ingles: "Estás ayudando con inglés de secundaria. Explicá en español y mostrá ejemplos en inglés. Corregí con claridad, sin inventar reglas raras.",
+    fisica:
+      "Estás ayudando con física de secundaria. Mostrá unidades, fórmulas entre $ y un ejemplo concreto. Si falta un dato, pedilo.",
+    quimica:
+      "Estás ayudando con química de secundaria. Cuidá balances, nomenclatura y estados. No inventes reacciones ni coeficientes.",
+    lengua:
+      "Estás ayudando con lengua y literatura de secundaria. Sé concreto con ejemplos de oraciones o fragmentos cortos. No inventes citas textuales.",
+    ingles:
+      "Estás ayudando con inglés de secundaria. Explicá en español y mostrá ejemplos en inglés. Corregí con claridad, sin inventar reglas raras.",
     geo: "Estás ayudando con geografía de secundaria. Priorizá conceptos (clima, relieve, población) y ubicaciones solo si las sabés. Si no, dilo.",
   };
   return `\n\nPedido para esta respuesta (no reemplaza las reglas de arriba): ${tone[id]}`;

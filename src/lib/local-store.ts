@@ -72,7 +72,9 @@ export const useFavoritesStore = create<FavState>()(
       toggle: (item) => {
         const { list, added } = toggleFavorite(get().items, item);
         set({ items: list });
-        useProgressStore.getState().record({ kind: "mark", mark: added ? "favorite" : "unfavorite" });
+        useProgressStore
+          .getState()
+          .record({ kind: "mark", mark: added ? "favorite" : "unfavorite" });
         if (added) useWeekStore.getState().note("favorites");
         return added;
       },

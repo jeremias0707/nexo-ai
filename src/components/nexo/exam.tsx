@@ -106,7 +106,7 @@ export async function postJson<T>(url: string, body: unknown, signal?: AbortSign
   const data = (await response.json().catch(() => ({}))) as T & { error?: string; code?: string };
   if (response.status === 401 && data.code === "access_required") {
     clearDeviceToken();
-    throw new Error(data.error || "Necesitás el código de acceso de NEXO.");
+    throw new Error(data.error || "No pude conectar con NEXO. Probá de nuevo.");
   }
   if (!response.ok) throw new Error(data.error || "No pude conectar con NEXO. Probá de nuevo.");
   return data;

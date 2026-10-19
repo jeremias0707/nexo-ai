@@ -1,26 +1,21 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { after, afterEach, before, describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import {
-  DAILY_CHAT_MAX,
   DAILY_EXAM_MAX,
   MAX_HITS,
   WINDOW_MS,
   clientIp,
   resetRateLimitMemoryForTests,
   runIfWithinQuota,
-  setChatPromoNowForTests,
   setRateLimitNowForTests,
   setRateLimitQueryForTests,
   tooManyRequests,
 } from "./rate-limit.server.ts";
 
 const IP = "203.0.113.20";
-const AFTER_PROMO = Date.parse("2026-11-14T00:00:00-03:00");
-
-// The tests below check the normal 40/day cap, i.e. after the free-chat promo.
-before(() => setChatPromoNowForTests(() => AFTER_PROMO));
-after(() => setChatPromoNowForTests(null));
+/** 3.0.2: chats have no daily cap; this many in a day must all pass. */
+const MANY_CHATS = 60;
 const DB = "postgres://rate-limit-test.invalid/nexo";
 
 function vercelRequest(headers: Record<string, string>) {
@@ -223,7 +218,7 @@ describe("AI quota", { concurrency: false }, () => {
     assert.equal(queries, 0);
   });
 
-  it("caps chats at 40/day and exams at 5/day, and grading does not take an exam", async () => {
+  it("has no daily chat cap, caps exams at 5/day, and grading does not take an exam", async () => {
     process.env.VERCEL = "1";
     process.env.DATABASE_URL = DB;
     let params: unknown[] = [];
@@ -233,23 +228,21 @@ describe("AI quota", { concurrency: false }, () => {
       return [{ recent: script.recent, day_n: script.day_n }];
     });
 
-    assert.equal(DAILY_CHAT_MAX, 40);
     assert.equal(DAILY_EXAM_MAX, 5);
 
     script.day_n = 39;
     assert.equal(await tooManyRequests(IP, 1, "chat"), false);
     assert.equal(params[3], 1);
-    assert.equal(params[6], 40);
+    assert.ok((params[6] as number) >= 1_000_000);
     assert.equal(params[7], 1);
     const chatDay = params[4];
 
-    script.day_n = 40;
-    assert.equal(await tooManyRequests(IP, 1, "chat"), true);
+    script.day_n = 500;
+    assert.equal(await tooManyRequests(IP, 1, "chat"), false);
 
     script.day_n = 5;
     assert.equal(await tooManyRequests(IP, 1, "grade"), false);
     assert.equal(params[4], chatDay);
-    assert.equal(params[6], 40);
 
     script.day_n = 4;
     assert.equal(await tooManyRequests(IP, 3, "exam"), false);
@@ -306,7 +299,7 @@ describe("AI quota", { concurrency: false }, () => {
       const minuteBody = (await minuteBlocked.json()) as { error: string };
       assert.equal(minuteBody.error, "limit");
 
-      while (chats < DAILY_CHAT_MAX) {
+      while (chats < MANY_CHATS) {
         now += WINDOW_MS + 1;
         const res = await chat(`203.0.113.${chats}`);
         assert.equal(res.status, 200);
@@ -321,9 +314,11 @@ describe("AI quota", { concurrency: false }, () => {
           return new Response("model");
         },
       );
-      assert.equal(spoofed.status, 429);
-      assert.equal(spoofCalled, false);
-      assert.equal(chats, DAILY_CHAT_MAX);
+      // No daily chat cap: the next chat still goes through.
+      assert.equal(spoofed.status, 200);
+      assert.equal(spoofCalled, true);
+      assert.equal(chats, MANY_CHATS);
+      now += WINDOW_MS + 1;
 
       let gradeCalled = false;
       const grade = await runIfWithinQuota(
@@ -334,8 +329,8 @@ describe("AI quota", { concurrency: false }, () => {
           return new Response("grade");
         },
       );
-      assert.equal(grade.status, 429);
-      assert.equal(gradeCalled, false);
+      assert.equal(grade.status, 200);
+      assert.equal(gradeCalled, true);
 
       let exams = 0;
       for (let i = 0; i < DAILY_EXAM_MAX; i++) {
@@ -405,65 +400,22 @@ describe("Stage A per-device memory caps", { concurrency: false }, () => {
     else process.env.VERCEL = original.VERCEL;
   });
 
-  it("gives each device its own daily chat budget on the Grok host", async () => {
+  it("gives each device its own exam budget and minute window on the Grok host", async () => {
     delete process.env.DATABASE_URL;
     delete process.env.VERCEL;
     let now = 1_700_000_000_000;
     setRateLimitNowForTests(() => now);
-    for (let i = 0; i < DAILY_CHAT_MAX; i++) {
+    for (let i = 0; i < MANY_CHATS; i++) {
       if (i > 0 && i % MAX_HITS === 0) now += WINDOW_MS + 1;
       assert.equal(await tooManyRequests(null, 1, "chat", "device-a-key"), false);
     }
-    now += WINDOW_MS + 1;
-    assert.equal(await tooManyRequests(null, 1, "chat", "device-a-key"), true);
-    // Another device still has room.
-    assert.equal(await tooManyRequests(null, 1, "chat", "device-b-key"), false);
-  });
-});
-
-describe("3.0.1 free chats until Nov 14, 2026 (Buenos Aires)", { concurrency: false }, () => {
-  const BEFORE = Date.parse("2026-11-13T23:59:59-03:00");
-  afterEach(() => {
-    setChatPromoNowForTests(() => AFTER_PROMO);
-    setRateLimitNowForTests(null);
-    resetRateLimitMemoryForTests();
-  });
-
-  async function runChats(n: number, bucket: "chat" | "exam" = "chat") {
-    let now = 1_700_000_000_000;
-    setRateLimitNowForTests(() => now);
-    let accepted = 0;
-    for (let i = 0; i < n; i++) {
-      if (i > 0 && i % MAX_HITS === 0) now += WINDOW_MS + 1;
-      if (!(await tooManyRequests(null, 1, bucket, "promo-device-key"))) accepted += 1;
+    for (let i = 0; i < DAILY_EXAM_MAX; i++) {
+      now += WINDOW_MS + 1;
+      assert.equal(await tooManyRequests(null, 1, "exam", "device-a-key"), false);
     }
-    return accepted;
-  }
-
-  it("before the date: no daily chat cap, exams still 5", async () => {
-    delete process.env.DATABASE_URL;
-    delete process.env.VERCEL;
-    setChatPromoNowForTests(() => BEFORE);
-    assert.equal(await runChats(DAILY_CHAT_MAX + 20), DAILY_CHAT_MAX + 20);
-    resetRateLimitMemoryForTests();
-    assert.equal(await runChats(10, "exam"), DAILY_EXAM_MAX);
-  });
-
-  it("before the date: the per-minute limit still applies", async () => {
-    delete process.env.DATABASE_URL;
-    delete process.env.VERCEL;
-    setChatPromoNowForTests(() => BEFORE);
-    setRateLimitNowForTests(() => 1_700_000_000_000);
-    let accepted = 0;
-    for (let i = 0; i < MAX_HITS + 3; i++)
-      if (!(await tooManyRequests(null, 1, "chat", "minute-device"))) accepted += 1;
-    assert.equal(accepted, MAX_HITS);
-  });
-
-  it("from Nov 14 00:00 (Buenos Aires): back to 40/day by itself", async () => {
-    delete process.env.DATABASE_URL;
-    delete process.env.VERCEL;
-    setChatPromoNowForTests(() => AFTER_PROMO);
-    assert.equal(await runChats(DAILY_CHAT_MAX + 20), DAILY_CHAT_MAX);
+    now += WINDOW_MS + 1;
+    assert.equal(await tooManyRequests(null, 1, "exam", "device-a-key"), true);
+    // Another device still has room.
+    assert.equal(await tooManyRequests(null, 1, "exam", "device-b-key"), false);
   });
 });

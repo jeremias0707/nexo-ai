@@ -2,107 +2,63 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
   GLOBAL_CHAT_MAX,
-  MAX_DEVICES_PER_DAY,
-  accessGateRequired,
-  accessReady,
+  GLOBAL_EXAM_MAX,
+  accessPublicStatus,
+  deviceKeyFor,
   globalBudgetAllows,
-  redeemAccessCode,
+  issueDeviceId,
   requireDeviceAccess,
   resetAccessMemoryForTests,
   setAccessNowForTests,
-  verifyDeviceToken,
 } from "./access.server.ts";
 
-describe("Stage A access gate", { concurrency: false }, () => {
-  const original = {
-    NEXO_ACCESS_CODE: process.env.NEXO_ACCESS_CODE,
-    GROK_PROJECT_ID: process.env.GROK_PROJECT_ID,
-  };
-
+describe("3.0.2: open access (no code)", { concurrency: false }, () => {
   afterEach(() => {
     resetAccessMemoryForTests();
     setAccessNowForTests(null);
-    for (const key of ["NEXO_ACCESS_CODE", "GROK_PROJECT_ID"] as const) {
-      if (original[key] === undefined) delete process.env[key];
-      else process.env[key] = original[key];
-    }
   });
 
-  it("soft-redeems in preview without a configured code", async () => {
-    delete process.env.GROK_PROJECT_ID;
-    delete process.env.NEXO_ACCESS_CODE;
-    assert.equal(accessGateRequired(), false);
-    assert.equal(accessReady(), true);
-    const result = await redeemAccessCode("");
-    assert.equal(result.ok, true);
-    if (!result.ok) return;
-    const key = await verifyDeviceToken(result.token);
-    assert.ok(key);
-  });
-
-  it("rejects wrong code when NEXO_ACCESS_CODE is set", async () => {
-    delete process.env.GROK_PROJECT_ID;
-    process.env.NEXO_ACCESS_CODE = "nexo-secreto";
-    const bad = await redeemAccessCode("otro");
-    assert.equal(bad.ok, false);
-    if (bad.ok) return;
-    assert.equal(bad.status, 401);
-    const good = await redeemAccessCode("nexo-secreto");
-    assert.equal(good.ok, true);
-  });
-
-  it("requires a device token on costly routes", async () => {
-    delete process.env.GROK_PROJECT_ID;
-    process.env.NEXO_ACCESS_CODE = "nexo-secreto";
-    const denied = await requireDeviceAccess(new Request("https://nexo.test/api/chat", { method: "POST" }));
-    assert.equal(denied.ok, false);
-    if (denied.ok) return;
-    assert.equal(denied.response.status, 401);
-
-    const minted = await redeemAccessCode("nexo-secreto");
-    assert.equal(minted.ok, true);
-    if (!minted.ok) return;
-    const allowed = await requireDeviceAccess(
+  it("costly routes never ask for a token", async () => {
+    const none = await requireDeviceAccess(
+      new Request("https://nexo.test/api/chat", { method: "POST" }),
+    );
+    assert.equal(none.ok, true);
+    const withId = await requireDeviceAccess(
       new Request("https://nexo.test/api/chat", {
         method: "POST",
-        headers: { "x-nexo-device": minted.token },
+        headers: { "x-nexo-device": "abcdef0123456789abcdef" },
       }),
     );
-    assert.equal(allowed.ok, true);
+    assert.equal(withId.ok, true);
+    if (withId.ok) assert.equal(withId.deviceKey.length, 64);
   });
 
-  it("caps device mints per day", async () => {
-    delete process.env.GROK_PROJECT_ID;
-    process.env.NEXO_ACCESS_CODE = "nexo-secreto";
-    let now = 1_700_000_000_000;
-    setAccessNowForTests(() => now);
-    for (let i = 0; i < MAX_DEVICES_PER_DAY; i++) {
-      const result = await redeemAccessCode("nexo-secreto");
-      assert.equal(result.ok, true, `mint ${i}`);
-    }
-    const over = await redeemAccessCode("nexo-secreto");
-    assert.equal(over.ok, false);
-    if (!over.ok) assert.equal(over.status, 429);
+  it("device id: same id → same key, junk → shared bucket", async () => {
+    const a = await deviceKeyFor("abcdef0123456789abcdef");
+    assert.equal(a, await deviceKeyFor("abcdef0123456789abcdef"));
+    assert.equal(await deviceKeyFor("short"), null);
+    assert.equal(await deviceKeyFor("bad id with spaces 1234567"), null);
   });
 
-  it("enforces a process-wide soft ceiling", () => {
-    let now = 1_700_000_000_000;
-    setAccessNowForTests(() => now);
-    for (let i = 0; i < GLOBAL_CHAT_MAX; i++) {
-      assert.equal(globalBudgetAllows("chat"), true);
-    }
+  it("/api/access compatibility hands out a random id, no code involved", () => {
+    const one = issueDeviceId();
+    const two = issueDeviceId();
+    assert.ok(one.token.length >= 32);
+    assert.notEqual(one.token, two.token);
+    assert.equal(one.caps.chats, null);
+  });
+
+  it("status says no access required and chats unlimited", () => {
+    const status = accessPublicStatus();
+    assert.equal(status.accessRequired, false);
+    assert.equal(status.caps.chats, null);
+    assert.equal(status.caps.exams, 5);
+  });
+
+  it("keeps the global safety caps", () => {
+    for (let i = 0; i < GLOBAL_CHAT_MAX; i++) assert.equal(globalBudgetAllows("chat"), true);
     assert.equal(globalBudgetAllows("chat"), false);
-  });
-
-  it("soft-redeems on published Grok host without access code env", async () => {
-    process.env.GROK_PROJECT_ID = "proj-test";
-    delete process.env.NEXO_ACCESS_CODE;
-    assert.equal(accessGateRequired(), true);
-    assert.equal(accessReady(), true);
-    const result = await redeemAccessCode("cualquier");
-    assert.equal(result.ok, true);
-    if (!result.ok) return;
-    const key = await verifyDeviceToken(result.token);
-    assert.ok(key);
+    for (let i = 0; i < GLOBAL_EXAM_MAX; i++) assert.equal(globalBudgetAllows("exam"), true);
+    assert.equal(globalBudgetAllows("exam"), false);
   });
 });

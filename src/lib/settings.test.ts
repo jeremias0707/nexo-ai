@@ -28,12 +28,15 @@ describe("settings", () => {
   });
 
   it("keeps the three choices", () => {
-    assert.deepEqual(sanitizeSettings({ theme: "claro", text: "grande", explain: "simple", reply: "pasos" }), {
-      theme: "claro",
-      text: "grande",
-      explain: "simple",
-      reply: "pasos",
-    });
+    assert.deepEqual(
+      sanitizeSettings({ theme: "claro", text: "grande", explain: "simple", reply: "pasos" }),
+      {
+        theme: "claro",
+        text: "grande",
+        explain: "simple",
+        reply: "pasos",
+      },
+    );
     assert.equal(sanitizeExplain("fondo"), "fondo");
     assert.equal(sanitizeExplain("a fondo"), "normal");
   });
