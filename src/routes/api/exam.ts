@@ -47,7 +47,8 @@ export const Route = createFileRoute("/api/exam")({
             weight: EXAM_WEIGHT,
             bucket: "exam",
             deviceKey: access.deviceKey,
-            message: "Llegaste al límite gratis de hoy (5 exámenes). Mañana se renueva el cupo.",
+            message:
+              "Llegaste a los 5 exámenes de hoy (mañana se renuevan) o vas muy rápido: si no hiciste 5, esperá un minuto.",
           },
           async () => {
             const apiKey = process.env.XAI_API_KEY;

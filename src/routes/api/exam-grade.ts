@@ -39,7 +39,7 @@ export const Route = createFileRoute("/api/exam-grade")({
           {
             bucket: "grade",
             deviceKey: access.deviceKey,
-            message: "Llegaste al límite gratis de hoy. Mañana se renueva el cupo.",
+            message: "Vas muy rápido: esperá un minuto y probá de nuevo.",
           },
           async () => {
             const apiKey = process.env.XAI_API_KEY;
