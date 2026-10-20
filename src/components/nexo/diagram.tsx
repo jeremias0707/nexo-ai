@@ -206,7 +206,7 @@ function ZoomModal({
   }, []);
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex flex-col bg-bg"
+      className="safe-fixed fixed inset-0 z-[100] flex flex-col bg-bg"
       role="dialog"
       aria-modal="true"
       aria-label={title}

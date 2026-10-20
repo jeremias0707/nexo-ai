@@ -1244,7 +1244,7 @@ function SourceChip({
 function ExitSheet({ onStay, onLeave }: { onStay: () => void; onLeave: () => void }) {
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end justify-center"
+      className="safe-fixed fixed inset-0 z-40 flex items-end justify-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby="exit-title"

@@ -142,7 +142,7 @@ export function FlashcardSheet({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end justify-center md:items-center"
+      className="safe-fixed fixed inset-0 z-40 flex items-end justify-center md:items-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby="fc-title"

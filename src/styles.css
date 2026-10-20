@@ -779,3 +779,27 @@ html[data-theme="claro"] .g-celebrate {
 html[data-theme="claro"] .date-input {
   color-scheme: light;
 }
+
+/* iPhone instalado (PWA): viewport-fit=cover + barra translúcida.
+   Respetamos el notch y la barra de inicio. Sin capa => gana a las utilidades. */
+.safe-app,
+.safe-fixed {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+.safe-page {
+  padding-top: max(1.25rem, env(safe-area-inset-top, 0px));
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+}
+/* Safari de iOS hace zoom al enfocar campos de menos de 16px. */
+@supports (-webkit-touch-callout: none) {
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1em) !important;
+  }
+}

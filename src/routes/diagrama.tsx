@@ -18,7 +18,7 @@ function DiagramPage() {
     return () => window.removeEventListener("hashchange", read);
   }, []);
   return (
-    <main className="mx-auto min-h-dvh max-w-4xl px-4 py-5">
+    <main className="mx-auto min-h-dvh max-w-4xl px-4 py-5 safe-page">
       <header className="flex items-center justify-between border-b border-line pb-3">
         <a href="/" className="font-display text-sm tracking-widest text-neon uppercase">
           NEXO AI

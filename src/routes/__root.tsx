@@ -9,7 +9,13 @@ export const Route = createRootRoute({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      // iPhone: instalar desde Safari (Compartir > Agregar a inicio) y abrir sin barras.
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "NEXO AI" },
+      { name: "application-name", content: "NEXO AI" },
       { title: APP_NAME },
       { name: "theme-color", content: "#050505" },
     ],
@@ -23,7 +29,7 @@ export const Route = createRootRoute({
       },
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/__grok/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: "/__grok/icon-180.png" },
+      { rel: "apple-touch-icon", sizes: "180x180", href: "/__grok/icon-180.png" },
     ],
   }),
   component: () => (

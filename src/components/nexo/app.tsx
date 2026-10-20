@@ -82,6 +82,7 @@ import {
 import { deviceHeaders, clearDeviceToken } from "@/lib/access-client";
 import { capsLine } from "@/lib/access-constants";
 import { challengeForDay, isDailyDone, markDailyDone, type DailyChallenge } from "@/lib/daily";
+import { IosInstallTip } from "@/components/nexo/ios-tip";
 import { MISSIONS, pickMissions, type Mission } from "@/lib/missions";
 import {
   SUBJECT_NONE,
@@ -695,7 +696,8 @@ export function NexoApp() {
   }
 
   return (
-    <div className="flex h-dvh bg-bg text-fg">
+    <div className="safe-app flex h-dvh bg-bg text-fg">
+      <IosInstallTip />
       <aside className="hidden w-64 shrink-0 border-r border-line md:flex">
         <Sidebar
           link={link}
@@ -1299,7 +1301,7 @@ function MobileDrawer({
   if (!present) return null;
 
   return (
-    <div className="fixed inset-0 z-30 md:hidden">
+    <div className="safe-fixed fixed inset-0 z-30 md:hidden">
       <button
         type="button"
         aria-label="Cerrar menú"
